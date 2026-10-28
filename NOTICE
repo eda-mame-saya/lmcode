@@ -1,0 +1,19 @@
+LMCode
+Copyright 2026 The LMCode Authors
+
+This product is licensed under the Apache License, Version 2.0.
+See the LICENSE file in the project root for the full license text.
+
+---
+Third-party software
+
+This product may start or redistribute the following component (separately
+licensed; see in-app OSS licenses and upstream projects):
+
+- llama.cpp (MIT) — https://github.com/ggml-org/llama.cpp
+
+GGUF model weights are not included in this distribution. Users supply their
+own models and are responsible for complying with each model's license terms.
+
+Flutter / Dart package licenses are listed in the in-app OSS license screen
+and in each package's upstream LICENSE.

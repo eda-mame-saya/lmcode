@@ -1,0 +1,13 @@
+# Cursor のインデックス・コンテキスト自動読込から除外する
+# （エクスプローラーや Git からは見える。正本は document/検討10.md）
+
+# 過去の検討メモ（第1〜9回）。統合済みのため毎回読む必要なし
+document/検討1.md
+document/検討2.md
+document/検討3.md
+document/検討4.md
+document/検討5.md
+document/検討6.md
+document/検討7.md
+document/検討8.md
+document/検討9.md

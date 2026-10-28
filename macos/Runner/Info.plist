@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>LSApplicationCategoryType</key>
+	<string></string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIconFile</key>
+	<string></string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>LMCode</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.97261711675-8uc2jb1bpu92md4bn8eh7gligs0kbaj4</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>GIDClientID</key>
+	<string>97261711675-8uc2jb1bpu92md4bn8eh7gligs0kbaj4.apps.googleusercontent.com</string>
+	<key>GIDServerClientID</key>
+	<string>97261711675-a3ij0cd3fl6g3n349su0tbrp0lh6ivil.apps.googleusercontent.com</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>オンライン会議の相手音声（システム音声）を受け取り、文字起こしに使うためにオーディオをキャプチャします。</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSMainNibFile</key>
+	<string>MainMenu</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>対面会議およびオンライン会議のリアルタイム文字起こしにマイクを使用します。</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+</dict>
+</plist>

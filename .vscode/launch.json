@@ -1,0 +1,105 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    //
+    // 環境: --dart-define=BUILD_ENV / ENV_FILE（.env.development 等）
+    // デバイス:
+    //   ・末尾なし …… IDEステータスバーで選択したデバイス
+    //   ・macOS …… deviceId: macos
+    //   ・iOS …… deviceId: iPhone（名前プレフィックス一致。実機/シミュレータは flutter devices で確認）
+    //   ・iPadOS …… deviceId: iPad
+    //   ・Windows …… deviceId: windows
+    //   ・Android …… deviceId: emulator（実機のみのときは flutter devices の ID に書き換える）
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "development (debug) · macOS",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "deviceId": "macos",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=development"
+            ]
+        },
+        {
+            "name": "development (release) · macOS",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "deviceId": "macos",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=development"
+            ]
+        },
+        {
+            "name": "development (debug) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=development"
+            ]
+        },
+        {
+            "name": "development (release) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=development"
+            ]
+        },
+        {
+            "name": "staging (debug) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=staging"
+            ]
+        },
+        {
+            "name": "staging (release) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=staging"
+            ]
+        },
+        {
+            "name": "production (debug) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "debug",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=production"
+            ]
+        },
+        {
+            "name": "production (release) · Windows",
+            "request": "launch",
+            "type": "dart",
+            "program": "lib/main.dart",
+            "flutterMode": "release",
+            "deviceId": "windows",
+            "toolArgs": [
+                "--dart-define=BUILD_ENV=production"
+            ]
+        }
+    ]
+}

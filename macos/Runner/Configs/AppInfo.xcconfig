@@ -1,0 +1,26 @@
+// Application-level settings for the Runner target.
+//
+// This may be replaced with something auto-generated from metadata (e.g., pubspec.yaml) in the
+// future. If not, the values below would default to using the project name when this becomes a
+// 'flutter create' template.
+
+// The application's name. By default this is also the title of the Flutter window.
+PRODUCT_NAME = lmcode
+
+// The application's bundle identifier
+PRODUCT_BUNDLE_IDENTIFIER = com.edamame.lmcode
+
+// 修正点：Google Sign-In の keychain-access-groups 等に必要（iOS と同一チーム）
+DEVELOPMENT_TEAM = 797FD9FP2N
+
+// The copyright displayed in application information
+PRODUCT_COPYRIGHT = Copyright © 2026 com.example. All rights reserved.
+
+// Xcode 26+/27: Runner 側も Explicit Modules を無効化（google_sign_in_ios_objc 解決失敗対策）
+SWIFT_ENABLE_EXPLICIT_MODULES = NO
+CLANG_ENABLE_EXPLICIT_MODULES = NO
+_EXPERIMENTAL_SWIFT_EXPLICIT_MODULES = NO
+
+// google_sign_in_ios（CocoaPods）が SPM 用 objc モジュール名を要求するためシムを参照
+SWIFT_INCLUDE_PATHS = $(inherited) $(SRCROOT)/Runner/ModuleShims
+HEADER_SEARCH_PATHS = $(inherited) $(SRCROOT)/Runner/ModuleShims

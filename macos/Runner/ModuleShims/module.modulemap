@@ -1,0 +1,6 @@
+// CocoaPods では google_sign_in_ios 単一モジュールにまとまるが、
+// プラグイン Swift が SPM 用 google_sign_in_ios_objc に依存するため Runner 向けシムを置く。
+module google_sign_in_ios_objc {
+  header "google_sign_in_ios_objc/ExceptionCatcher.h"
+  export *
+}
