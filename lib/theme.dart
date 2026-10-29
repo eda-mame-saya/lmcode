@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// ブランド既定値（浅葱プライマリ）。テーマ生成の seed／フォールバック用。
+/// ブランド既定値（濃いオレンジ プライマリ）。テーマ生成の seed／フォールバック用。
 /// 画面・ウィジェットでは [AppColors.of] を使うこと。
 abstract final class AppBrandColors {
-  static const primary = Color(0xFF00A8C3);
-  static const secondary = Color(0xFFE5FFFD);
-  static const pageBackground = Color(0xFFF7F9FA);
+  static const primary = Color(0xFFE65100);
+  static const secondary = Color(0xFFFFF3E0);
+  static const pageBackground = Color(0xFFFFFAF7);
 }
 
 /// 画面・パーツ向けセマンティック色。
@@ -125,14 +125,14 @@ class AppColors extends ThemeExtension<AppColors> {
     diffRemoveBackground: Color(0xFFFFEBEE),
     diffRemoveForeground: Color(0xFFB71C1C),
     statusRunning: Color(0xFF2E7D32),
-    panelAccentSoft: Color(0x8CE5FFFD),
+    panelAccentSoft: Color(0x8CFFF3E0),
   );
 
   /// ダーク既定（Atom One Dark 系エディタ色に合わせる）。
   static const dark = AppColors(
     primary: AppBrandColors.primary,
     onPrimary: Color(0xFFFFFFFF),
-    secondary: Color(0xFF12353A),
+    secondary: Color(0xFF3A2210),
     pageBackground: Color(0xFF121212),
     dialogBarrier: Color(0x8C000000),
     dialogSurface: Color(0xFF1E1E1E),
@@ -158,7 +158,7 @@ class AppColors extends ThemeExtension<AppColors> {
     diffRemoveBackground: Color(0xFF3A1B1B),
     diffRemoveForeground: Color(0xFFEF9A9A),
     statusRunning: Color(0xFF66BB6A),
-    panelAccentSoft: Color(0x6612353A),
+    panelAccentSoft: Color(0x663A2210),
   );
 
   @override

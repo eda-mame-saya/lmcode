@@ -4331,7 +4331,7 @@ $avoid$guidance
       }
 
       final content =
-          CodingPatchApplier.insertOnlyContent(patch) ??
+          CodingPatchApplier.addFileContent(patch) ??
           patch.newSnippet?.replaceAll('\r\n', '\n') ??
           '';
 

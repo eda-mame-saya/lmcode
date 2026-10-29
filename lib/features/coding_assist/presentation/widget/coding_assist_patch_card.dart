@@ -10,7 +10,7 @@ bool codingAssistIsNewFunctionInsertPatch(CodingProposedPatch patch) {
 String? codingAssistPatchReplacementBody(CodingProposedPatch patch) {
   if (patch.isAddFile) {
     final addBody =
-        CodingPatchApplier.insertOnlyContent(patch) ??
+        CodingPatchApplier.addFileContent(patch) ??
         patch.newSnippet?.replaceAll('\r\n', '\n');
     if (addBody != null && addBody.isNotEmpty) return addBody;
   }
@@ -86,7 +86,7 @@ CodingPatchDiffPreview? codingAssistPatchDiffPreview(
   }
   if (patch.isAddFile) {
     final add =
-        CodingPatchApplier.insertOnlyContent(patch) ??
+        CodingPatchApplier.addFileContent(patch) ??
         patch.newSnippet?.replaceAll('\r\n', '\n');
     if (add != null && add.isNotEmpty) {
       return CodingPatchDiffPreview(

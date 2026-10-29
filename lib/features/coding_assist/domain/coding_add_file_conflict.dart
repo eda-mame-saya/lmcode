@@ -1,3 +1,5 @@
+import 'coding_patch.dart';
+
 /// 既存ファイルへの Add File を、モデルに二択させずに一つの Patch へ決める。
 enum CodingAddConflictAction {
   /// 対象が同じ。そのパスの Update だけ。
@@ -74,16 +76,18 @@ const Set<String> _codingFrameworkSymbols = {
   'Stream',
 };
 
-/// `+` 行だけを連結する。無ければ [rawDiff] 全体。
+/// Add File 提案の本文。`+` 省略行も含める（[CodingPatchApplier.addFileContent] と同じ方針）。
 String codingProposedAddedText(String rawDiff) {
-  final lines = <String>[];
-  for (final line in rawDiff.split('\n')) {
-    if (line.startsWith('+') && !line.startsWith('+++')) {
-      lines.add(line.substring(1));
-    }
-  }
-  if (lines.isEmpty) return rawDiff;
-  return lines.join('\n');
+  final fromAdd = CodingPatchApplier.addFileContent(
+    CodingProposedPatch(
+      id: '_',
+      relativePath: '_',
+      rawDiff: rawDiff,
+      isAddFile: true,
+    ),
+  );
+  if (fromAdd != null && fromAdd.trim().isNotEmpty) return fromAdd;
+  return rawDiff;
 }
 
 /// 宣言・`group`・`late` から、フレームワーク名を除いたシンボル。

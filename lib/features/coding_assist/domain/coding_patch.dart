@@ -249,7 +249,7 @@ abstract final class CodingPatchApplier {
       final fromRaw = _applyRawDiff(
         base,
         patch.rawDiff,
-        preferInsertOnly: insertOnly,
+        addFileBody: patch.isAddFile,
       );
       if (fromRaw != null) {
         return CodingPatchApplyResult.applied(fromRaw);
@@ -292,8 +292,11 @@ abstract final class CodingPatchApplier {
     }
 
     // 3) Add／挿入のみ: 文脈行を捨てて + 行だけ採用
+    //    Add File は途中の + 省略にも耐える addFileContent を使う
     if (insertOnly) {
-      final content = insertOnlyContent(patch);
+      final content = patch.isAddFile
+          ? addFileContent(patch)
+          : insertOnlyContent(patch);
       if (content == null) {
         return const CodingPatchApplyResult.failed();
       }
@@ -428,6 +431,56 @@ abstract final class CodingPatchApplier {
     return null;
   }
 
+  /// Add File の本文。LLM が先頭以外の `+` を省略してもヘッダ以降を本文として拾う。
+  ///
+  /// [insertOnlyContent] は `+` 行だけを返すため、長文 Markdown で途中から
+  /// `+` が落ちると1行しか作れない。こちらは未プレフィックス行も本文に含める。
+  /// 文書内の ``` フェンスはパッチ囲みではなく本文なので落とさない。
+  static String? addFileContent(CodingProposedPatch patch) {
+    if (patch.rawDiff.trim().isNotEmpty) {
+      final fromRaw = _addFileBodyFromRaw(patch.rawDiff);
+      if (fromRaw != null) return fromRaw;
+    }
+    final newS = patch.newSnippet?.replaceAll('\r\n', '\n');
+    if (newS != null && newS.isNotEmpty) return newS;
+    return insertOnlyContent(patch);
+  }
+
+  static final _addFileHeader = RegExp(
+    r'^\*\*\*\s*Add\s+File\b',
+    caseSensitive: false,
+  );
+
+  /// Add File ヘッダ以降〜次の `***` までを本文化。`+` / 先頭スペースは1文字だけ剥がす。
+  static String? _addFileBodyFromRaw(String rawDiff) {
+    final lines = rawDiff.replaceAll('\r\n', '\n').split('\n');
+    final out = <String>[];
+    var inBody = false;
+    for (final line in lines) {
+      if (!inBody) {
+        if (_addFileHeader.hasMatch(line)) inBody = true;
+        continue;
+      }
+      if (line.startsWith('***')) break;
+      if (line.startsWith('@@')) continue;
+      if (line.startsWith('+++ ') || line.startsWith('--- ')) continue;
+      if (line.startsWith('diff ') || line.startsWith('index ')) continue;
+      if (line.startsWith('+')) {
+        out.add(line.substring(1));
+      } else if (line.startsWith(' ')) {
+        out.add(line.substring(1));
+      } else {
+        // 未プレフィックス、または Markdown 箇条書きの `-` 行（diff 削除ではない）
+        out.add(line);
+      }
+    }
+    while (out.isNotEmpty && out.last.isEmpty) {
+      out.removeLast();
+    }
+    if (out.isEmpty) return null;
+    return out.join('\n');
+  }
+
   /// 選択範囲置換用。先頭 hunk の新側（文脈＋追加）のみ。複数 @@ があっても連結しない。
   static String? firstHunkNewContent(String patchBody) {
     final hunks = _parseHunks(patchBody);
@@ -475,7 +528,7 @@ abstract final class CodingPatchApplier {
   static String? _applyRawDiff(
     String base,
     String rawDiff, {
-    bool preferInsertOnly = false,
+    bool addFileBody = false,
   }) {
     final hunks = _parseHunks(rawDiff);
     if (hunks.isEmpty) return null;
@@ -483,11 +536,12 @@ abstract final class CodingPatchApplier {
     final onlyInserts = hunks.every(
       (h) => h.deletedLines.isEmpty && h.insertedLines.isNotEmpty,
     );
-    // 追加のみ（文脈行があっても可）・ベース空 → 新規ファイルとして + 行だけ採用
+    // 追加のみ・ベース空 → 新規ファイル。
+    // Add File は新側全体（+ 省略行含む）。Update の挿入のみは + 行だけ。
     if (onlyInserts && base.trim().isEmpty) {
-      return hunks.expand((h) => h.insertedLines).join('\n');
-    }
-    if (preferInsertOnly && onlyInserts && base.trim().isEmpty) {
+      if (addFileBody) {
+        return hunks.expand((h) => h.newLines).join('\n');
+      }
       return hunks.expand((h) => h.insertedLines).join('\n');
     }
 

@@ -266,7 +266,7 @@ class _ThemeModeRow extends StatelessWidget {
   }
 }
 
-/// 個別色カスタム（ライト／ダーク配色を別々に編集・永続）。
+/// 個別色カスタム（ライト／ダーク配色を別々に編集・永続）。折りたたみ可。
 class _AppColorsSection extends StatefulWidget {
   const _AppColorsSection();
 
@@ -276,6 +276,7 @@ class _AppColorsSection extends StatefulWidget {
 
 class _AppColorsSectionState extends State<_AppColorsSection> {
   late Brightness _palette;
+  bool _expanded = false;
 
   @override
   void initState() {
@@ -290,81 +291,94 @@ class _AppColorsSectionState extends State<_AppColorsSection> {
       listenable: controller,
       builder: (context, _) {
         final colors = controller.colorsFor(_palette);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 8, bottom: 4),
-              child: Row(
-                children: [
-                  const SizedBox(width: 220, child: Text('色の編集対象')),
-                  Expanded(
-                    child: SegmentedButton<Brightness>(
-                      segments: const [
-                        ButtonSegment(
-                          value: Brightness.light,
-                          label: Text('ライト配色'),
-                        ),
-                        ButtonSegment(
-                          value: Brightness.dark,
-                          label: Text('ダーク配色'),
-                        ),
-                      ],
-                      selected: {_palette},
-                      onSelectionChanged: (next) {
-                        setState(() => _palette = next.first);
-                      },
-                    ),
-                  ),
-                ],
-              ),
+        final customized = controller.hasAnyOverride(_palette);
+        return Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            key: const PageStorageKey<String>('settings_colors'),
+            initiallyExpanded: false,
+            onExpansionChanged: (v) => setState(() => _expanded = v),
+            tilePadding: EdgeInsets.zero,
+            childrenPadding: const EdgeInsets.only(bottom: 4),
+            title: Text(
+              customized ? '色設定（カスタムあり）' : '色設定',
+              style: const TextStyle(fontWeight: FontWeight.w500),
             ),
-            Text(
-              'ピッカーで色を変えられます。変更はすぐ反映され、端末に保存されます。',
+            subtitle: Text(
+              _expanded
+                  ? 'ピッカーで色を変えられます。変更はすぐ反映・保存されます。'
+                  : 'タップしてライト／ダークの個別色を編集',
               style: TextStyle(
                 fontSize: 12,
                 color: Theme.of(context).hintColor,
               ),
             ),
-            const SizedBox(height: 4),
-            for (final group in AppColorToken.groupOrder) ...[
+            children: [
               Padding(
-                padding: const EdgeInsets.only(top: 10, bottom: 2),
-                child: Text(
-                  group,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    const SizedBox(width: 220, child: Text('色の編集対象')),
+                    Expanded(
+                      child: SegmentedButton<Brightness>(
+                        segments: const [
+                          ButtonSegment(
+                            value: Brightness.light,
+                            label: Text('ライト配色'),
+                          ),
+                          ButtonSegment(
+                            value: Brightness.dark,
+                            label: Text('ダーク配色'),
+                          ),
+                        ],
+                        selected: {_palette},
+                        onSelectionChanged: (next) {
+                          setState(() => _palette = next.first);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              for (final token in AppColorToken.values.where(
-                (t) => t.group == group,
-              ))
-                _AppColorTokenRow(
-                  token: token,
-                  color: token.read(colors),
-                  isCustomized: controller.hasOverride(_palette, token),
-                  onPick: () => _pick(context, controller, token, colors),
-                  onReset: controller.hasOverride(_palette, token)
-                      ? () => controller.clearColorOverride(
-                            brightness: _palette,
-                            token: token,
-                          )
+              for (final group in AppColorToken.groupOrder) ...[
+                Padding(
+                  padding: const EdgeInsets.only(top: 10, bottom: 2),
+                  child: Text(
+                    group,
+                    style: const TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                for (final token in AppColorToken.values.where(
+                  (t) => t.group == group,
+                ))
+                  _AppColorTokenRow(
+                    token: token,
+                    color: token.read(colors),
+                    isCustomized: controller.hasOverride(_palette, token),
+                    onPick: () => _pick(context, controller, token, colors),
+                    onReset: controller.hasOverride(_palette, token)
+                        ? () => controller.clearColorOverride(
+                              brightness: _palette,
+                              token: token,
+                            )
+                        : null,
+                  ),
+              ],
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton(
+                  onPressed: customized
+                      ? () => controller.clearAllColorOverrides(_palette)
                       : null,
-                ),
-            ],
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton(
-                onPressed: controller.hasAnyOverride(_palette)
-                    ? () => controller.clearAllColorOverrides(_palette)
-                    : null,
-                child: Text(
-                  _palette == Brightness.dark
-                      ? 'ダーク配色を既定に戻す'
-                      : 'ライト配色を既定に戻す',
+                  child: Text(
+                    _palette == Brightness.dark
+                        ? 'ダーク配色を既定に戻す'
+                        : 'ライト配色を既定に戻す',
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         );
       },
     );
