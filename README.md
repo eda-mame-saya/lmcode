@@ -15,8 +15,7 @@
 
 | 項目 | 内容 |
 |------|------|
-| 主対象 OS | **macOS**（起動画面はコーディングアシスト） |
-| Windows | ランナーあり・移植中（現状 S16 入口は無効。設定画面へフォールバック） |
+| 対象 OS | **macOS**／**Windows**（起動画面はコーディングアシスト S16） |
 | 生成 AI | **llama.cpp のみ**（Ollama／クラウド LLM は正としない） |
 | モデル | **GGUF は同梱しない**。利用者が追加（ライセンスは利用者責任） |
 | ログイン | 不要（完全ローカル） |
@@ -40,7 +39,7 @@
 
 | 項目 | 推奨 |
 |------|------|
-| OS | macOS（開発・利用の主戦場） |
+| OS | macOS または Windows 10/11（64bit） |
 | メモリ | **32GB 以上**（14B 級 GGUF・128k ctx 想定） |
 | ディスク | アプリ＋ユーザー用意の GGUF 分 |
 | ネット | 本体の Agent／編集はオフライン可（モデル取得時のみ必要） |
@@ -167,13 +166,10 @@ Dart 入力中補完を使う場合、エンジン設定（S11）で SDK パス�
 
 ---
 
-## Windows（現状）
+## Windows（ソースから起動）
 
-| 項目 | 状態 |
-|------|------|
-| `windows/` ランナー | あり |
-| S16 コーディング UI | **当面無効**（設定画面へ） |
-| ビルド | **Windows 実機必須**（クロスビルド不可） |
+前提: Visual Studio 2022（または対応版）＋「C++ によるデスクトップ開発」。  
+ビルドは **Windows 実機必須**（クロスビルド不可）。
 
 ```powershell
 flutter config --enable-windows-desktop
@@ -182,11 +178,11 @@ flutter run -d windows
 flutter build windows --release
 ```
 
-前提: Visual Studio 2022 ＋「C++ によるデスクトップ開発」、`llama-server.exe` を  
-`%USERPROFILE%\Documents\LMCode\local_llm\` 等へ配置。
+`llama-server.exe` は `%USERPROFILE%\Documents\LMCode\local_llm\` または exe 隣の `local_llm\` へ配置。  
+Swift 補完は macOS のみ。Dart 補完・Agent・ターミナル・RAM 表示は Windows でも利用可。
 
-方針の正本: [`document/基本設計/08_Windows対応_実装方針.md`](document/基本設計/08_Windows対応_実装方針.md)  
-配布下書き: [`document/配布方法/windows/`](document/配布方法/windows/)
+方針: [`document/基本設計/08_Windows対応_実装方針.md`](document/基本設計/08_Windows対応_実装方針.md)  
+配布: [`document/配布方法/windows/`](document/配布方法/windows/)
 
 ---
 
@@ -198,7 +194,7 @@ flutter build windows --release
 | `llama-server` が見つからない | `brew install llama.cpp`、または `~/Documents/LMCode/local_llm/llama-server` に配置 |
 | モデル追加後も一覧に出ない | アプリ再起動。MTP 下書き係（`mtp-*.gguf`）は一覧に出ない仕様 |
 | Dart 補完が出ない | S11 の SDK パス、または `which dart`／Flutter SDK |
-| Windows でコーディング画面が出ない | 現状仕様（入口無効）。設定画面のみ |
+| Windows で `llama-server` が見つからない | `%USERPROFILE%\Documents\LMCode\local_llm\llama-server.exe` を配置 |
 
 ---
 

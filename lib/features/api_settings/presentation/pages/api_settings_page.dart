@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,7 +9,6 @@ import 'package:go_router/go_router.dart';
 import '../../../../injection.dart';
 import '../../../../routes.dart';
 import '../../../../theme.dart';
-import '../../../coding_assist/domain/coding_assist_availability.dart';
 import '../../../generative_ai/domain/gemma_mtp_draft.dart';
 import '../../../oss_licenses/presentation/open_oss_licenses_page.dart';
 import '../../data/datasources/custom_llm_models_local_datasource.dart';
@@ -388,16 +389,6 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
           ),
         ),
         const SizedBox(height: 12),
-        if (!CodingAssistAvailability.isUiEnabled) ...[
-          Text(
-            'Windows ではコーディング画面がありません。'
-            '以下は macOS 向け設定の保管用です。',
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 12),
-        ],
         InputDecorator(
           decoration: const InputDecoration(
             labelText: 'コーディング用モデル',
@@ -493,15 +484,6 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
           'コーディング自動補完 : Flutter',
           style: textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
-        if (!CodingAssistAvailability.isUiEnabled) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Windows ではコーディング画面がありません（補完も S16 上では使えません）。',
-            style: textTheme.bodySmall?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
         const SizedBox(height: 8),
         Text(
           'Dart／Flutter SDK パス（空＝PATH から dart を探索）',
@@ -515,8 +497,10 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
             Expanded(
               child: TextField(
                 controller: _dartSdkPathController,
-                decoration: const InputDecoration(
-                  hintText: '例: /Users/you/flutter/bin',
+                decoration: InputDecoration(
+                  hintText: Platform.isWindows
+                      ? r'例: C:\Users\you\Documents\flutter\bin'
+                      : '例: /Users/you/flutter/bin',
                   border: OutlineInputBorder(),
                   isDense: true,
                 ),

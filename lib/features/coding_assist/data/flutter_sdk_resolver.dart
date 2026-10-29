@@ -23,7 +23,14 @@ abstract final class FlutterSdkResolver {
 
   static String _siblingFlutter(String dartPath) {
     final name = Platform.isWindows ? 'flutter.bat' : 'flutter';
-    return p.join(p.dirname(dartPath), name);
+    final normalized = p.normalize(dartPath);
+    final marker =
+        '${p.separator}cache${p.separator}dart-sdk${p.separator}bin${p.separator}';
+    final index = normalized.toLowerCase().lastIndexOf(marker.toLowerCase());
+    if (index >= 0) {
+      return p.join(normalized.substring(0, index), name);
+    }
+    return p.join(p.dirname(normalized), name);
   }
 
   static Future<String?> _resolveFromPath() async {

@@ -146,7 +146,6 @@ class _ChatPane extends StatelessWidget {
             state.workspaceRoot != null &&
             !state.isGenerating &&
             !state.isLlmBusy;
-        final historyOpen = state.isHistoryOpen;
         final warn = state.warningLevel;
         return Column(
           children: [
@@ -161,65 +160,43 @@ class _ChatPane extends StatelessWidget {
                     visualDensity: VisualDensity.compact,
                   ),
                   Text(
-                    historyOpen ? 'ヒストリー' : 'Agent',
+                    'Agent',
                     style: const TextStyle(fontWeight: FontWeight.w600),
                   ),
-                  if (!historyOpen) ...[
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        state.contextUsageLabel,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: warn == CodingContextWarningLevel.block
-                              ? Theme.of(context).colorScheme.error
-                              : warn == CodingContextWarningLevel.warn ||
-                                    warn == CodingContextWarningLevel.compacted
-                              ? Theme.of(context).colorScheme.tertiary
-                              : null,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      state.contextUsageLabel,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: warn == CodingContextWarningLevel.block
+                            ? Theme.of(context).colorScheme.error
+                            : warn == CodingContextWarningLevel.warn ||
+                                  warn == CodingContextWarningLevel.compacted
+                            ? Theme.of(context).colorScheme.tertiary
+                            : null,
                       ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                     ),
-                  ],
-                  if (!historyOpen && warn != CodingContextWarningLevel.none)
+                  ),
+                  if (warn != CodingContextWarningLevel.none)
                     Expanded(child: _ContextWarnBanner(level: warn)),
                   const SizedBox(width: 8),
-                  if (historyOpen)
+                  if (kDebugMode)
                     IconButton(
-                      tooltip: 'ヒストリーを閉じる',
-                      onPressed: () => context.read<CodingAssistBloc>().add(
-                        const CodingAssistHistoryCloseRequested(),
-                      ),
-                      icon: const Icon(Icons.close, size: 20),
-                      visualDensity: VisualDensity.compact,
-                    )
-                  else ...[
-                    if (kDebugMode)
-                      IconButton(
-                        tooltip: '入力と出力をコピー',
-                        onPressed: () => _copyDebugExchange(context, state),
-                        icon: const Icon(Icons.copy_all, size: 20),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    IconButton(
-                      tooltip: 'ヒストリー',
-                      onPressed: state.workspaceRoot == null
-                          ? null
-                          : () => context.read<CodingAssistBloc>().add(
-                              const CodingAssistHistoryOpenRequested(),
-                            ),
-                      icon: const Icon(Icons.history, size: 20),
+                      tooltip: '入力と出力をコピー',
+                      onPressed: () => _copyDebugExchange(context, state),
+                      icon: const Icon(Icons.copy_all, size: 20),
                       visualDensity: VisualDensity.compact,
                     ),
-                    TextButton(
-                      onPressed: canAct
-                          ? () => context.read<CodingAssistBloc>().add(
-                              const CodingAssistNewThreadRequested(),
-                            )
-                          : null,
-                      child: const Text('新規'),
-                    ),
+                  TextButton(
+                    onPressed: canAct
+                        ? () => context.read<CodingAssistBloc>().add(
+                            const CodingAssistNewThreadRequested(),
+                          )
+                        : null,
+                    child: const Text('新規'),
+                  ),
                     TextButton(
                       onPressed: canAct && state.messages.isNotEmpty
                           ? () => context.read<CodingAssistBloc>().add(
@@ -235,14 +212,11 @@ class _ChatPane extends StatelessWidget {
                         ),
                         child: const Text('停止'),
                       ),
-                  ],
                 ],
               ),
             ),
             Expanded(
-              child: historyOpen
-                  ? _HistoryList(state: state)
-                  : ListView.builder(
+              child: ListView.builder(
                       padding: const EdgeInsets.all(8),
                       itemCount:
                           state.messages.length +
@@ -299,8 +273,7 @@ class _ChatPane extends StatelessWidget {
                       },
                     ),
             ),
-            if (!historyOpen)
-              Padding(
+            Padding(
                 padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -689,65 +662,6 @@ class _AgentSendButton extends StatelessWidget {
         ),
       ),
     );
-  }
-}
-
-class _HistoryList extends StatelessWidget {
-  const _HistoryList({required this.state});
-
-  final CodingAssistState state;
-
-  @override
-  Widget build(BuildContext context) {
-    final items = state.workspaceThreadSummaries;
-    if (items.isEmpty) {
-      return const Center(
-        child: Text('このワークスペースの履歴はまだありません', style: TextStyle(fontSize: 13)),
-      );
-    }
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      itemCount: items.length,
-      itemBuilder: (context, index) {
-        final item = items[index];
-        final selected = state.thread?.id == item.id;
-        return ListTile(
-          dense: true,
-          selected: selected,
-          title: Text(
-            item.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 13),
-          ),
-          subtitle: Text(
-            _formatHistoryTime(item.updatedAt),
-            style: const TextStyle(fontSize: 11),
-          ),
-          trailing: IconButton(
-            tooltip: '削除',
-            icon: const Icon(Icons.delete_outline, size: 18),
-            onPressed: state.isGenerating
-                ? null
-                : () => context.read<CodingAssistBloc>().add(
-                    CodingAssistDeleteThreadRequested(item.id),
-                  ),
-          ),
-          onTap: state.isGenerating
-              ? null
-              : () => context.read<CodingAssistBloc>().add(
-                  CodingAssistOpenThreadRequested(item.id),
-                ),
-        );
-      },
-    );
-  }
-
-  String _formatHistoryTime(DateTime at) {
-    final local = at.toLocal();
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${local.year}/${two(local.month)}/${two(local.day)} '
-        '${two(local.hour)}:${two(local.minute)}';
   }
 }
 

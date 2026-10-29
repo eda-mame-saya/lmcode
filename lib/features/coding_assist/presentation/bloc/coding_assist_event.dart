@@ -179,30 +179,6 @@ final class CodingAssistNewThreadRequested extends CodingAssistEvent {
   const CodingAssistNewThreadRequested();
 }
 
-final class CodingAssistHistoryOpenRequested extends CodingAssistEvent {
-  const CodingAssistHistoryOpenRequested();
-}
-
-final class CodingAssistHistoryCloseRequested extends CodingAssistEvent {
-  const CodingAssistHistoryCloseRequested();
-}
-
-final class CodingAssistOpenThreadRequested extends CodingAssistEvent {
-  const CodingAssistOpenThreadRequested(this.threadId);
-  final String threadId;
-
-  @override
-  List<Object?> get props => [threadId];
-}
-
-final class CodingAssistDeleteThreadRequested extends CodingAssistEvent {
-  const CodingAssistDeleteThreadRequested(this.threadId);
-  final String threadId;
-
-  @override
-  List<Object?> get props => [threadId];
-}
-
 final class CodingAssistSelectionAttached extends CodingAssistEvent {
   const CodingAssistSelectionAttached(this.selection);
   final CodingAttachedSelection selection;

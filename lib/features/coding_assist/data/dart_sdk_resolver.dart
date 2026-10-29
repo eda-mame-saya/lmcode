@@ -18,19 +18,22 @@ abstract final class DartSdkResolver {
   static Future<String?> _resolveFromConfigured(String configured) async {
     final entity = FileSystemEntity.typeSync(configured);
     if (entity == FileSystemEntityType.file) {
-      if (await _looksLikeDartBinary(configured)) return p.normalize(configured);
-      return null;
+      return _asDartExecutable(configured);
     }
     if (entity == FileSystemEntityType.directory) {
+      final exe = Platform.isWindows ? 'dart.exe' : 'dart';
       final candidates = <String>[
-        p.join(configured, 'bin', Platform.isWindows ? 'dart.exe' : 'dart'),
-        p.join(configured, Platform.isWindows ? 'dart.exe' : 'dart'),
-        // Flutter SDK ルート想定
-        p.join(configured, 'bin', 'cache', 'dart-sdk', 'bin',
-            Platform.isWindows ? 'dart.exe' : 'dart'),
+        p.join(configured, 'bin', exe),
+        p.join(configured, exe),
+        // Flutter SDK ルート
+        p.join(configured, 'bin', 'cache', 'dart-sdk', 'bin', exe),
+        // 指定が flutter/bin のとき（Windows は bin 直下に dart.exe が無い）
+        p.join(configured, 'cache', 'dart-sdk', 'bin', exe),
+        if (Platform.isWindows) p.join(configured, 'dart.bat'),
       ];
       for (final c in candidates) {
-        if (await _looksLikeDartBinary(c)) return p.normalize(c);
+        final resolved = await _asDartExecutable(c);
+        if (resolved != null) return resolved;
       }
     }
     return null;
@@ -49,17 +52,31 @@ abstract final class DartSdkResolver {
           .map((e) => e.trim())
           .firstWhere((e) => e.isNotEmpty, orElse: () => '');
       if (line.isEmpty) return null;
-      if (await _looksLikeDartBinary(line)) return p.normalize(line);
+      final resolved = await _asDartExecutable(line);
+      if (resolved != null) return resolved;
     } catch (_) {
       return null;
     }
     return null;
   }
 
-  static Future<bool> _looksLikeDartBinary(String path) async {
-    final file = File(path);
-    if (!await file.exists()) return false;
+  /// `dart` / `dart.exe` はそのまま。Windows の `dart.bat` は隣の
+  /// `cache/dart-sdk/bin/dart.exe` に読み替える（bat は Process.start できない）。
+  static Future<String?> _asDartExecutable(String path) async {
     final name = p.basename(path).toLowerCase();
-    return name == 'dart' || name == 'dart.exe';
+    if (name == 'dart.bat') {
+      final exe = p.join(
+        p.dirname(path),
+        'cache',
+        'dart-sdk',
+        'bin',
+        'dart.exe',
+      );
+      if (await File(exe).exists()) return p.normalize(exe);
+      return null;
+    }
+    if (name != 'dart' && name != 'dart.exe') return null;
+    if (!await File(path).exists()) return null;
+    return p.normalize(path);
   }
 }

@@ -5,7 +5,7 @@ abstract final class DriveSystemFolders {
   /// llama-server／GGUF 展開先（設計上予約。未展開でも同名プロジェクト作成を禁止）。
   static const localLlm = 'local_llm';
 
-  /// S16 コーディングアシスト（会話・直近ワークスペース）。
+  /// S16 コーディングアシスト（直近ワークスペース・フォルダ展開）。
   static const codingAssist = 'coding_assist';
 
   /// プロジェクト／第N回未選択時の退避先（子は日時フォルダ。第N回名ではない）。

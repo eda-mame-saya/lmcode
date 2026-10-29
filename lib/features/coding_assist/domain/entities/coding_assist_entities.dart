@@ -167,37 +167,6 @@ final class CodingChatMessage {
   }
 }
 
-final class CodingThreadSummary {
-  const CodingThreadSummary({
-    required this.id,
-    required this.title,
-    required this.workspaceRootPath,
-    required this.updatedAt,
-  });
-
-  final String id;
-  final String title;
-  final String workspaceRootPath;
-  final DateTime updatedAt;
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'workspaceRootPath': workspaceRootPath,
-    'updatedAt': updatedAt.toIso8601String(),
-  };
-
-  factory CodingThreadSummary.fromJson(Map<String, dynamic> json) {
-    return CodingThreadSummary(
-      id: '${json['id'] ?? ''}',
-      title: '${json['title'] ?? '無題'}',
-      workspaceRootPath: '${json['workspaceRootPath'] ?? ''}',
-      updatedAt:
-          DateTime.tryParse('${json['updatedAt'] ?? ''}') ?? DateTime.now(),
-    );
-  }
-}
-
 final class CodingThread {
   const CodingThread({
     required this.id,
@@ -219,9 +188,6 @@ final class CodingThread {
     final trimmed = title.trim();
     return trimmed.isEmpty || trimmed == placeholderTitle;
   }
-
-  /// メッセージが1件でもあればディスクに残す。
-  bool get persists => messages.isNotEmpty;
 
   final String id;
   final String title;

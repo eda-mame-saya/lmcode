@@ -707,7 +707,6 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
             p.agentStatusMessage == c.agentStatusMessage &&
             p.mtpDraftFileName == c.mtpDraftFileName &&
             p.workspaceStatusMessage == c.workspaceStatusMessage &&
-            p.isHistoryOpen == c.isHistoryOpen &&
             p.draft == c.draft &&
             p.isLlmBusy == c.isLlmBusy &&
             p.localLlm.codingCustomModelId == c.localLlm.codingCustomModelId &&

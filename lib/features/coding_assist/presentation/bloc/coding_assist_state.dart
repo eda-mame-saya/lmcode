@@ -15,7 +15,6 @@ final class CodingAssistState extends Equatable {
     this.isLoading = true,
     this.isLlmBusy = false,
     this.isGenerating = false,
-    this.isHistoryOpen = false,
     this.isEditingLastUser = false,
     this.localLlm = const LocalLlmConnectionSettings(),
     this.uiFontSizes = CodingUiFontSizes.defaults,
@@ -28,7 +27,6 @@ final class CodingAssistState extends Equatable {
     this.appliedPromptActions = const [],
     this.recentWorkspaces = const [],
     this.folderExpansion,
-    this.threadSummaries = const [],
     this.workspaceRoot,
     this.gitBranch,
     this.index,
@@ -58,7 +56,6 @@ final class CodingAssistState extends Equatable {
   final bool isLoading;
   final bool isLlmBusy;
   final bool isGenerating;
-  final bool isHistoryOpen;
   final bool isEditingLastUser;
   final LocalLlmConnectionSettings localLlm;
 
@@ -89,7 +86,6 @@ final class CodingAssistState extends Equatable {
 
   /// 開いているワークスペースのフォルダ展開記録。null は未記録（既定展開）。
   final Map<String, bool>? folderExpansion;
-  final List<CodingThreadSummary> threadSummaries;
   final String? workspaceRoot;
 
   /// git があるときのみブランチ名（なければ null）。
@@ -183,20 +179,10 @@ final class CodingAssistState extends Equatable {
     return null;
   }
 
-  /// 現在ワークスペースに紐づく履歴のみ。
-  List<CodingThreadSummary> get workspaceThreadSummaries {
-    final root = workspaceRoot;
-    if (root == null) return const [];
-    return threadSummaries
-        .where((s) => s.workspaceRootPath == root)
-        .toList(growable: false);
-  }
-
   CodingAssistState copyWith({
     bool? isLoading,
     bool? isLlmBusy,
     bool? isGenerating,
-    bool? isHistoryOpen,
     bool? isEditingLastUser,
     LocalLlmConnectionSettings? localLlm,
     CodingUiFontSizes? uiFontSizes,
@@ -212,7 +198,6 @@ final class CodingAssistState extends Equatable {
     List<String>? recentWorkspaces,
     Map<String, bool>? folderExpansion,
     bool clearFolderExpansion = false,
-    List<CodingThreadSummary>? threadSummaries,
     String? workspaceRoot,
     String? gitBranch,
     CodingWorkspaceIndex? index,
@@ -258,7 +243,6 @@ final class CodingAssistState extends Equatable {
       isLoading: isLoading ?? this.isLoading,
       isLlmBusy: isLlmBusy ?? this.isLlmBusy,
       isGenerating: isGenerating ?? this.isGenerating,
-      isHistoryOpen: isHistoryOpen ?? this.isHistoryOpen,
       isEditingLastUser: isEditingLastUser ?? this.isEditingLastUser,
       localLlm: localLlm ?? this.localLlm,
       uiFontSizes: uiFontSizes ?? this.uiFontSizes,
@@ -277,7 +261,6 @@ final class CodingAssistState extends Equatable {
       folderExpansion: clearFolderExpansion
           ? null
           : (folderExpansion ?? this.folderExpansion),
-      threadSummaries: threadSummaries ?? this.threadSummaries,
       workspaceRoot: clearWorkspace
           ? null
           : (workspaceRoot ?? this.workspaceRoot),
@@ -338,7 +321,6 @@ final class CodingAssistState extends Equatable {
     isLoading,
     isLlmBusy,
     isGenerating,
-    isHistoryOpen,
     isEditingLastUser,
     localLlm.codingCustomModelId,
     localLlm.codingCustomGgufFileName,
@@ -356,7 +338,6 @@ final class CodingAssistState extends Equatable {
     appliedPromptActions,
     recentWorkspaces,
     _folderExpansionProp(folderExpansion),
-    threadSummaries.map((s) => '${s.id}:${s.updatedAt.toIso8601String()}'),
     workspaceRoot,
     gitBranch,
     index?.rootPath,

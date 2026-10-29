@@ -84,10 +84,6 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistReproposePatchRequested>(_onReproposePatch);
     on<CodingAssistAddFileConflictChoiceRequested>(_onAddFileConflictChoice);
     on<CodingAssistNewThreadRequested>(_onNewThread);
-    on<CodingAssistHistoryOpenRequested>(_onHistoryOpen);
-    on<CodingAssistHistoryCloseRequested>(_onHistoryClose);
-    on<CodingAssistOpenThreadRequested>(_onOpenThread);
-    on<CodingAssistDeleteThreadRequested>(_onDeleteThread);
     on<CodingAssistSelectionAttached>(_onSelectionAttached);
     on<CodingAssistSelectionCleared>(_onSelectionCleared);
     on<CodingAssistFolderFilesAttachRequested>(_onFolderFilesAttachRequested);
@@ -551,8 +547,6 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     }
     try {
       recent = await _repository.listRecentWorkspaces();
-      // 保存済みの空「新規」を履歴から外す。
-      await _repository.listSummaries();
     } catch (e) {
       error = error == null ? '$e' : '$error / $e';
     }
@@ -968,7 +962,6 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           recentWorkspaces: recent,
           folderExpansion: folderExpansion,
           clearFolderExpansion: folderExpansion == null,
-          isHistoryOpen: false,
           isEditingLastUser: false,
           clearAttachedSelection: true,
           clearAttachedOpenFiles: true,
@@ -987,7 +980,6 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
               '${index.rootLabel}（${index.relativeFiles.length} files）',
         ),
       );
-      await _repository.saveThread(thread);
     } catch (e) {
       emit(state.copyWith(errorMessage: '$e', clearWorkspaceStatus: true));
     }
@@ -1280,7 +1272,6 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         draft: '',
         bumpDraftEpoch: true,
         streamingText: '',
-        isHistoryOpen: false,
         isEditingLastUser: false,
         clearAttachedSelection: true,
         clearAttachedOpenFiles: true,
@@ -1994,7 +1985,6 @@ $avoid$guidance
           clearAttachedSelection: clearDraft,
           clearAttachedOpenFiles: clearDraft,
           clearAttachedFolderStructures: clearDraft,
-          isHistoryOpen: false,
           usedTokens: used,
           warningLevel: warn,
           agentStatusMessage:
@@ -2521,15 +2511,12 @@ $avoid$guidance
           finalWarn = CodingContextWarningLevel.compacted;
         }
         current = current.copyWith(contextWarningLevel: finalWarn);
-        await _repository.saveThread(current);
-        final summaries = await _repository.listSummaries();
         emit(
           state.copyWith(
             isGenerating: false,
             streamingText: '',
             // generationTrace は次ターン開始まで残し、直前ログとして確認可能にする
             thread: current,
-            threadSummaries: summaries,
             usedTokens: finalUsed,
             warningLevel: finalWarn,
             agentStatusMessage: _cancelRequested ? '停止しました' : '完了',
@@ -3645,9 +3632,6 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
-    if (thread != null) {
-      await _repository.saveThread(thread);
-    }
     if (!emit.isDone) {
       emit(
         state.copyWith(
@@ -3953,19 +3937,6 @@ $avoid$guidance
       }
       return;
     }
-    try {
-      await _repository.saveThread(existing);
-    } catch (e) {
-      if (!emit.isDone) {
-        emit(
-          state.copyWith(
-            isGenerating: false,
-            errorMessage: '会話を保存できませんでした: $e',
-          ),
-        );
-      }
-      return;
-    }
     final thread = CodingThread(
       id: const Uuid().v4(),
       title: CodingThread.placeholderTitle,
@@ -3973,20 +3944,6 @@ $avoid$guidance
       messages: const [],
       updatedAt: DateTime.now(),
     );
-    try {
-      await _repository.saveThread(thread);
-    } catch (e) {
-      if (!emit.isDone) {
-        emit(
-          state.copyWith(
-            isGenerating: false,
-            errorMessage: '新しい会話を作れませんでした: $e',
-          ),
-        );
-      }
-      return;
-    }
-    final summaries = await _repository.listSummaries();
     if (emit.isDone) return;
     emit(
       state.copyWith(
@@ -3994,8 +3951,6 @@ $avoid$guidance
         pendingPatches: const [],
         isGenerating: false,
         streamingText: '',
-        threadSummaries: summaries,
-        isHistoryOpen: false,
         isEditingLastUser: false,
         clearError: true,
         agentStatusMessage: '同じ実行が繰り返されたため、新しい会話で続けます',
@@ -4217,22 +4172,6 @@ $avoid$guidance
       ],
       updatedAt: DateTime.now(),
     );
-    try {
-      await _repository.saveThread(next);
-    } catch (e) {
-      if (!emit.isDone) {
-        emit(
-          state.copyWith(
-            isGenerating: false,
-            localLlm: localLlm,
-            errorMessage: '検証結果を保存できませんでした: $e',
-            agentStatusMessage: status,
-          ),
-        );
-      }
-      return;
-    }
-    final summaries = await _repository.listSummaries();
     final used = _estimateUsedTokens(
       messages: next.messages,
       draft: state.draft,
@@ -4249,7 +4188,6 @@ $avoid$guidance
           isGenerating: false,
           streamingText: '',
           thread: next,
-          threadSummaries: summaries,
           localLlm: localLlm,
           usedTokens: used,
           warningLevel: warn,
@@ -4471,7 +4409,6 @@ $avoid$guidance
         pendingPatches: pending,
         updatedAt: DateTime.now(),
       );
-      if (thread != null) await _repository.saveThread(thread);
       if (auto) {
         _updatesAppliedThisCycle++;
         _updatesAppliedThisSet++;
@@ -4670,7 +4607,6 @@ $avoid$guidance
         pendingPatches: pending,
         updatedAt: DateTime.now(),
       );
-      if (thread != null) await _repository.saveThread(thread);
       if (auto && !workingPatch.isAddFile) {
         _updatesAppliedThisCycle++;
         _updatesAppliedThisSet++;
@@ -4701,7 +4637,6 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
-    if (thread != null) await _repository.saveThread(thread);
     emit(state.copyWith(pendingPatches: pending, thread: thread));
   }
 
@@ -4718,7 +4653,6 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
-    if (thread != null) await _repository.saveThread(thread);
     emit(state.copyWith(pendingPatches: pending, thread: thread));
   }
 
@@ -4756,8 +4690,6 @@ $avoid$guidance
       messages: const [],
       updatedAt: DateTime.now(),
     );
-    await _repository.saveThread(thread);
-    final summaries = await _repository.listSummaries();
     final used = _estimateUsedTokens(
       messages: const [],
       draft: '',
@@ -4772,8 +4704,6 @@ $avoid$guidance
         draft: '',
         bumpDraftEpoch: true,
         streamingText: '',
-        threadSummaries: summaries,
-        isHistoryOpen: false,
         isEditingLastUser: false,
         clearAttachedSelection: true,
         clearAttachedOpenFiles: true,
@@ -4784,129 +4714,6 @@ $avoid$guidance
         agentStatusMessage: '新しい会話',
       ),
     );
-  }
-
-  Future<void> _onHistoryOpen(
-    CodingAssistHistoryOpenRequested event,
-    Emitter<CodingAssistState> emit,
-  ) async {
-    try {
-      final summaries = await _repository.listSummaries();
-      emit(
-        state.copyWith(
-          isHistoryOpen: true,
-          threadSummaries: summaries,
-          clearError: true,
-        ),
-      );
-    } catch (e) {
-      emit(state.copyWith(errorMessage: '履歴の読込に失敗: $e'));
-    }
-  }
-
-  void _onHistoryClose(
-    CodingAssistHistoryCloseRequested event,
-    Emitter<CodingAssistState> emit,
-  ) {
-    emit(state.copyWith(isHistoryOpen: false));
-  }
-
-  Future<void> _onOpenThread(
-    CodingAssistOpenThreadRequested event,
-    Emitter<CodingAssistState> emit,
-  ) async {
-    try {
-      final thread = await _repository.loadThread(event.threadId);
-      if (thread == null) {
-        emit(state.copyWith(errorMessage: '会話が見つかりません'));
-        return;
-      }
-      final pending = thread.pendingPatches
-          .where((p) => p.status != CodingPatchStatus.rejected)
-          .toList();
-      final used = _estimateUsedTokens(
-        messages: thread.messages,
-        draft: state.draft,
-        thread: thread,
-        clearAttached: true,
-        clearAttachedOpenFiles: true,
-        clearAttachedFolderStructures: true,
-      );
-      var warn = _warningFor(used);
-      if (thread.compactedSummary != null &&
-          warn != CodingContextWarningLevel.block) {
-        warn = CodingContextWarningLevel.compacted;
-      }
-      emit(
-        state.copyWith(
-          thread: thread,
-          pendingPatches: pending,
-          isHistoryOpen: false,
-          isEditingLastUser: false,
-          streamingText: '',
-          clearAttachedSelection: true,
-          clearAttachedOpenFiles: true,
-          clearAttachedFolderStructures: true,
-          clearAppliedPromptActions: true,
-          usedTokens: used,
-          warningLevel: warn,
-          agentStatusMessage: '履歴を開きました',
-        ),
-      );
-    } catch (e) {
-      emit(state.copyWith(errorMessage: '会話の読込に失敗: $e'));
-    }
-  }
-
-  Future<void> _onDeleteThread(
-    CodingAssistDeleteThreadRequested event,
-    Emitter<CodingAssistState> emit,
-  ) async {
-    try {
-      await _repository.deleteThread(event.threadId);
-      final summaries = await _repository.listSummaries();
-      final deletingCurrent = state.thread?.id == event.threadId;
-      if (deletingCurrent) {
-        final root = state.workspaceRoot;
-        if (root == null) {
-          emit(
-            state.copyWith(
-              threadSummaries: summaries,
-              clearThread: true,
-              pendingPatches: const [],
-            ),
-          );
-          return;
-        }
-        final thread = CodingThread(
-          id: const Uuid().v4(),
-          title: CodingThread.placeholderTitle,
-          workspaceRootPath: root,
-          messages: const [],
-          updatedAt: DateTime.now(),
-        );
-        await _repository.saveThread(thread);
-        final nextSummaries = await _repository.listSummaries();
-        emit(
-          state.copyWith(
-            thread: thread,
-            pendingPatches: const [],
-            draft: '',
-            streamingText: '',
-            threadSummaries: nextSummaries,
-            clearAttachedSelection: true,
-            clearAttachedOpenFiles: true,
-            clearAttachedFolderStructures: true,
-            clearAppliedPromptActions: true,
-            agentStatusMessage: '会話を削除しました',
-          ),
-        );
-        return;
-      }
-      emit(state.copyWith(threadSummaries: summaries));
-    } catch (e) {
-      emit(state.copyWith(errorMessage: '削除に失敗: $e'));
-    }
   }
 
   void _onSelectionAttached(
@@ -5216,29 +5023,22 @@ $avoid$guidance
       updatedAt: DateTime.now(),
     );
     final draft = state.isEditingLastUser ? '' : state.draft;
-    try {
-      await _repository.saveThread(trimmed);
-      final summaries = await _repository.listSummaries();
-      emit(
-        state.copyWith(
-          thread: trimmed,
-          pendingPatches: const [],
+    emit(
+      state.copyWith(
+        thread: trimmed,
+        pendingPatches: const [],
+        draft: draft,
+        bumpDraftEpoch: state.isEditingLastUser,
+        isEditingLastUser: false,
+        streamingText: '',
+        usedTokens: _estimateUsedTokens(
+          messages: trimmed.messages,
           draft: draft,
-          bumpDraftEpoch: state.isEditingLastUser,
-          isEditingLastUser: false,
-          streamingText: '',
-          threadSummaries: summaries,
-          usedTokens: _estimateUsedTokens(
-            messages: trimmed.messages,
-            draft: draft,
-          ),
-          agentStatusMessage: 'とりけししました',
-          clearError: true,
         ),
-      );
-    } catch (e) {
-      emit(state.copyWith(errorMessage: 'とりけしに失敗: $e'));
-    }
+        agentStatusMessage: 'とりけししました',
+        clearError: true,
+      ),
+    );
   }
 
   Future<void> _onCodingModelChanged(
@@ -5391,20 +5191,15 @@ $avoid$guidance
       warn = CodingContextWarningLevel.compacted;
     }
     final saved = compacted.copyWith(contextWarningLevel: warn);
-    try {
-      await _repository.saveThread(saved);
-      emit(
-        state.copyWith(
-          thread: saved,
-          usedTokens: used,
-          warningLevel: warn,
-          agentStatusMessage: 'コンテキストを圧縮しました',
-          clearError: true,
-        ),
-      );
-    } catch (e) {
-      emit(state.copyWith(errorMessage: '圧縮の保存に失敗: $e'));
-    }
+    emit(
+      state.copyWith(
+        thread: saved,
+        usedTokens: used,
+        warningLevel: warn,
+        agentStatusMessage: 'コンテキストを圧縮しました',
+        clearError: true,
+      ),
+    );
   }
 
   void _onErrorConsumed(

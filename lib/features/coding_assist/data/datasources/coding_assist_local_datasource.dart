@@ -5,39 +5,39 @@ import 'package:path/path.dart' as p;
 
 import '../../../drive/domain/drive_system_folders.dart';
 import '../../domain/coding_folder_expansion.dart';
-import '../../domain/entities/coding_assist_entities.dart';
 
+/// 直近ワークスペースとフォルダ展開。会話は保存しない。
 class CodingAssistLocalDataSource {
-  Future<Directory> _ensureRoot(String appRootFolderPath) async {
+  /// `~/Documents/LMCode/coding_assist`。ベースフォルダ設定は使わない。
+  Future<Directory> _ensureRoot() async {
+    final home = (Platform.environment['HOME'] ??
+            Platform.environment['USERPROFILE'])
+        ?.trim();
+    final base = (home == null || home.isEmpty)
+        ? Directory.systemTemp.path
+        : p.join(home, 'Documents');
     final root = Directory(
-      p.join(appRootFolderPath, DriveSystemFolders.codingAssist),
+      p.join(base, 'LMCode', DriveSystemFolders.codingAssist),
     );
     if (!await root.exists()) {
       await root.create(recursive: true);
-    }
-    final threads = Directory(p.join(root.path, 'threads'));
-    if (!await threads.exists()) {
-      await threads.create(recursive: true);
     }
     return root;
   }
 
   File _indexFile(String rootPath) => File(p.join(rootPath, 'index.json'));
 
-  File _threadFile(String rootPath, String id) =>
-      File(p.join(rootPath, 'threads', '$id.json'));
-
   Future<Map<String, dynamic>> _readIndexMap(String rootPath) async {
     final index = _indexFile(rootPath);
     if (!await index.exists()) {
-      return {'version': 1, 'threads': [], 'recentWorkspaces': []};
+      return {'version': 1, 'recentWorkspaces': []};
     }
     try {
       final decoded = jsonDecode(await index.readAsString());
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     } catch (_) {}
-    return {'version': 1, 'threads': [], 'recentWorkspaces': []};
+    return {'version': 1, 'recentWorkspaces': []};
   }
 
   Future<void> _writeIndexMap(String rootPath, Map<String, dynamic> map) async {
@@ -46,71 +46,8 @@ class CodingAssistLocalDataSource {
     ).writeAsString(const JsonEncoder.withIndent('  ').convert(map));
   }
 
-  /// 一覧を返す。メッセージの無い「新規」は index と threads ファイルから外す。
-  Future<List<CodingThreadSummary>> listSummaries(
-    String appRootFolderPath,
-  ) async {
-    final root = await _ensureRoot(appRootFolderPath);
-    final map = await _readIndexMap(root.path);
-    final threads = map['threads'];
-    final list = <CodingThreadSummary>[];
-    if (threads is List) {
-      for (final item in threads) {
-        if (item is Map<String, dynamic>) {
-          list.add(CodingThreadSummary.fromJson(item));
-        } else if (item is Map) {
-          list.add(
-            CodingThreadSummary.fromJson(Map<String, dynamic>.from(item)),
-          );
-        }
-      }
-    }
-    final kept = <CodingThreadSummary>[];
-    final dropIds = <String>[];
-    for (final summary in list) {
-      if (!CodingThread.isPlaceholderTitle(summary.title)) {
-        kept.add(summary);
-        continue;
-      }
-      if (summary.id.trim().isEmpty ||
-          summary.id.contains('/') ||
-          summary.id.contains('\\') ||
-          summary.id.contains('..')) {
-        dropIds.add(summary.id);
-        continue;
-      }
-      final thread = await loadThread(appRootFolderPath, summary.id);
-      if (thread != null && thread.persists) {
-        kept.add(summary);
-        continue;
-      }
-      final file = _threadFile(root.path, summary.id);
-      if (thread == null && await file.exists()) {
-        kept.add(summary);
-        continue;
-      }
-      dropIds.add(summary.id);
-    }
-    if (dropIds.isNotEmpty) {
-      for (final id in dropIds) {
-        if (id.trim().isEmpty ||
-            id.contains('/') ||
-            id.contains('\\') ||
-            id.contains('..')) {
-          continue;
-        }
-        final file = _threadFile(root.path, id);
-        if (await file.exists()) await file.delete();
-      }
-      map['threads'] = kept.map((s) => s.toJson()).toList();
-      await _writeIndexMap(root.path, map);
-    }
-    kept.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
-    return kept;
-  }
-
-  Future<List<String>> listRecentWorkspaces(String appRootFolderPath) async {
-    final root = await _ensureRoot(appRootFolderPath);
+  Future<List<String>> listRecentWorkspaces() async {
+    final root = await _ensureRoot();
     final map = await _readIndexMap(root.path);
     final recent = map['recentWorkspaces'];
     final out = <String>[];
@@ -127,104 +64,12 @@ class CodingAssistLocalDataSource {
     return out;
   }
 
-  Future<CodingThread?> loadThread(String appRootFolderPath, String id) async {
-    final root = await _ensureRoot(appRootFolderPath);
-    final file = _threadFile(root.path, id);
-    if (!await file.exists()) return null;
-    try {
-      final decoded = jsonDecode(await file.readAsString());
-      if (decoded is Map<String, dynamic>) {
-        return CodingThread.fromJson(decoded);
-      }
-      if (decoded is Map) {
-        return CodingThread.fromJson(Map<String, dynamic>.from(decoded));
-      }
-    } catch (_) {}
-    return null;
-  }
-
-  Future<void> saveThread(String appRootFolderPath, CodingThread thread) async {
-    if (!thread.persists) {
-      await _discardIfPresent(appRootFolderPath, thread.id);
-      return;
-    }
-    final root = await _ensureRoot(appRootFolderPath);
-    await _threadFile(root.path, thread.id).writeAsString(
-      const JsonEncoder.withIndent('  ').convert(thread.toJson()),
-    );
-    final map = await _readIndexMap(root.path);
-    final summaries = await listSummaries(appRootFolderPath);
-    final next = [
-      CodingThreadSummary(
-        id: thread.id,
-        title: thread.title,
-        workspaceRootPath: thread.workspaceRootPath,
-        updatedAt: thread.updatedAt,
-      ),
-      ...summaries.where((s) => s.id != thread.id),
-    ];
-    map['threads'] = next.map((s) => s.toJson()).toList();
-    await _writeIndexMap(root.path, map);
-  }
-
-  /// 未保存の空会話では index を書き換えない。
-  Future<void> _discardIfPresent(String appRootFolderPath, String id) async {
-    if (id.trim().isEmpty ||
-        id.contains('/') ||
-        id.contains('\\') ||
-        id.contains('..')) {
-      return;
-    }
-    final root = await _ensureRoot(appRootFolderPath);
-    final file = _threadFile(root.path, id);
-    final existed = await file.exists();
-    final map = await _readIndexMap(root.path);
-    final threads = map['threads'];
-    final inIndex =
-        threads is List &&
-        threads.any((item) => item is Map && '${item['id']}' == id);
-    if (!existed && !inIndex) return;
-    if (existed) {
-      final loaded = await loadThread(appRootFolderPath, id);
-      // 同じ id にメッセージがある会話は、空の保存では消さない。
-      if (loaded == null || loaded.persists) return;
-      await file.delete();
-    }
-    if (threads is List && inIndex) {
-      map['threads'] = threads.where((item) {
-        if (item is Map) return '${item['id']}' != id;
-        return true;
-      }).toList();
-      await _writeIndexMap(root.path, map);
-    }
-  }
-
-  Future<void> deleteThread(String appRootFolderPath, String id) async {
-    final root = await _ensureRoot(appRootFolderPath);
-    final file = _threadFile(root.path, id);
-    if (await file.exists()) {
-      await file.delete();
-    }
-    final map = await _readIndexMap(root.path);
-    final threads = map['threads'];
-    if (threads is List) {
-      map['threads'] = threads.where((item) {
-        if (item is Map) return '${item['id']}' != id;
-        return true;
-      }).toList();
-      await _writeIndexMap(root.path, map);
-    }
-  }
-
-  Future<void> rememberWorkspace(
-    String appRootFolderPath,
-    String workspaceRoot,
-  ) async {
-    final root = await _ensureRoot(appRootFolderPath);
+  Future<void> rememberWorkspace(String workspaceRoot) async {
+    final root = await _ensureRoot();
     final map = await _readIndexMap(root.path);
     final path = workspaceRoot.trim();
     if (path.isEmpty) return;
-    final existing = await listRecentWorkspaces(appRootFolderPath);
+    final existing = await listRecentWorkspaces();
     final next = [path, ...existing.where((e) => e != path)].take(8).toList();
     map['recentWorkspaces'] = [
       for (final r in next)
@@ -237,16 +82,12 @@ class CodingAssistLocalDataSource {
     await _writeIndexMap(root.path, map);
   }
 
-  //  フォルダを開いていない場合に表示している最近開いたフォルダリストを削除する
-  Future<void> removeRecentWorkspace(
-    String appRootFolderPath,
-    String workspaceRoot,
-  ) async {
-    final root = await _ensureRoot(appRootFolderPath);
+  Future<void> removeRecentWorkspace(String workspaceRoot) async {
+    final root = await _ensureRoot();
     final map = await _readIndexMap(root.path);
     final path = workspaceRoot.trim();
     if (path.isEmpty) return;
-    final existing = await listRecentWorkspaces(appRootFolderPath);
+    final existing = await listRecentWorkspaces();
     final next = existing.where((e) => e != path).toList();
     map['recentWorkspaces'] = [
       for (final r in next)
@@ -262,11 +103,8 @@ class CodingAssistLocalDataSource {
   static const _folderTreeExpandedKey = 'folderTreeExpanded';
 
   /// このワークスペースを一度も記録していなければ null。
-  Future<Map<String, bool>?> loadFolderExpansion(
-    String appRootFolderPath,
-    String workspaceRoot,
-  ) async {
-    final root = await _ensureRoot(appRootFolderPath);
+  Future<Map<String, bool>?> loadFolderExpansion(String workspaceRoot) async {
+    final root = await _ensureRoot();
     final map = await _readIndexMap(root.path);
     final path = workspaceRoot.trim();
     if (path.isEmpty) return null;
@@ -279,11 +117,10 @@ class CodingAssistLocalDataSource {
 
   /// 直近に書いたワークスペースを残し、上限を超えた古い記録は捨てる。
   Future<void> saveFolderExpansion(
-    String appRootFolderPath,
     String workspaceRoot,
     Map<String, bool> expandedByPath,
   ) async {
-    final root = await _ensureRoot(appRootFolderPath);
+    final root = await _ensureRoot();
     final map = await _readIndexMap(root.path);
     final path = workspaceRoot.trim();
     if (path.isEmpty) return;

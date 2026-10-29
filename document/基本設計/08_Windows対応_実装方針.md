@@ -1,7 +1,7 @@
 # Windows 対応：実装方針
 
-最終更新: 2026-10-28  
-位置づけ: macOS 初期実装が一巡したあとの **Windows 移植方針**。続きの実装・検証は **Windows 開発機**で行う。  
+最終更新: 2026-10-29  
+位置づけ: macOS 初期実装が一巡したあとの **Windows 移植方針**。S16 入口は有効化済み。受け入れ確認は Windows 機で続行。  
 関連: [04_非機能制約OS差分.md](./04_非機能制約OS差分.md)、[05_運用配布保守.md](./05_運用配布保守.md)、`document/配布方法/windows/`
 
 ---
@@ -24,7 +24,7 @@
 |------|------|
 | `windows/` ランナー | あり（`BINARY_NAME=lmcode`） |
 | `.vscode/launch.json` | `deviceId: windows` 構成あり |
-| S16 入口 | `CodingAssistAvailability` で **Windows のみ無効** |
+| S16 入口 | `CodingAssistAvailability` で **Web 以外は有効**（Windows 含む） |
 | LLM 起動／停止 | `llama-server.exe`・`taskkill`・`USERPROFILE` 分岐あり |
 | ターミナル | `COMSPEC`／`powershell.exe`、`flutter_pty` は Windows 対応 |
 | Dart／Flutter 解決 | `.bat` / `.exe` / `where` 分岐あり |
@@ -59,9 +59,9 @@ flutter build windows --release
 
 | # | 作業 | メモ |
 |---|------|------|
-| W1 | `CodingAssistAvailability.isUiEnabled` を Windows でも true | 方針転換。GPU 必須条件にはしない（CPU 可） |
-| W2 | 本ファイル・`04`・配布 README の「入口非提供」を更新 | 実装と正を揃える |
-| W3 | S16 起動〜フォルダオープン〜編集のスモーク | |
+| W1 | `CodingAssistAvailability.isUiEnabled` を Windows でも true | **完了**（2026-10-29）。GPU 必須条件にはしない |
+| W2 | 本ファイル・`04`・配布 README の「入口非提供」を更新 | **完了** |
+| W3 | S16 起動〜フォルダオープン〜編集のスモーク | Windows 機で確認 |
 
 ### 4.2 サイドカー・ランタイム（必須）
 
@@ -137,4 +137,5 @@ LMCode-Windows.zip
 
 | 日付 | 内容 |
 |------|------|
+| 2026-10-29 | W1／W2 完了。S16 入口有効化・設計追随 |
 | 2026-10-28 | 初版。S16 有効化方針・ビルド要件・RAM 必須を固定 |

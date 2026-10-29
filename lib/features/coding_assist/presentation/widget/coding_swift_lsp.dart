@@ -43,6 +43,11 @@ class CodingSwiftLspController extends ChangeNotifier
     final ticket = ++_attachTicket;
     await _shutdown();
     if (!_current(ticket)) return;
+    // SourceKit-LSP は macOS＋Xcode のみ。Windows／Linux では起動しない。
+    if (!Platform.isMacOS) {
+      _setStatus(null);
+      return;
+    }
     final root = workspaceRoot.trim();
     if (root.isEmpty) {
       _setStatus(null);

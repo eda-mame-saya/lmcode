@@ -1,11 +1,5 @@
-import '../entities/coding_assist_entities.dart';
-
 abstract class CodingAssistRepository {
-  Future<List<CodingThreadSummary>> listSummaries();
   Future<List<String>> listRecentWorkspaces();
-  Future<CodingThread?> loadThread(String id);
-  Future<void> saveThread(CodingThread thread);
-  Future<void> deleteThread(String id);
   Future<void> rememberWorkspace(String rootPath);
   Future<void> removeRecentWorkspace(String rootPath);
 

@@ -15,7 +15,6 @@ import 'features/drive/data/datasources/drive_remote_datasource.dart';
 import 'features/drive/data/datasources/local_workspace_datasource.dart';
 import 'features/drive/data/repositories/drive_repository_impl.dart';
 import 'features/drive/domain/repositories/drive_repository.dart';
-import 'features/drive/domain/usecases/get_drive_connection_state.dart';
 import 'features/generative_ai/data/ai_debug_log_store.dart';
 import 'features/generative_ai/data/local_llm_client.dart';
 import 'features/generative_ai/data/local_llm_server_launcher.dart';
@@ -74,7 +73,6 @@ Future<void> configureDependencies() async {
 
   getIt.registerLazySingleton(() => GetConnectionSettings(getIt()));
   getIt.registerLazySingleton(() => SaveConnectionSettings(getIt()));
-  getIt.registerLazySingleton(() => GetDriveConnectionState(getIt()));
 
   getIt.registerLazySingleton(AiDebugLogStore.new);
   getIt.registerLazySingleton(
@@ -96,10 +94,7 @@ Future<void> configureDependencies() async {
     () => CodingUiSettingsLocalDataSource(preferences: getIt()),
   );
   getIt.registerLazySingleton<CodingAssistRepository>(
-    () => CodingAssistRepositoryImpl(
-      localDataSource: getIt(),
-      getDriveConnectionState: getIt(),
-    ),
+    () => CodingAssistRepositoryImpl(localDataSource: getIt()),
   );
   getIt.registerFactory(
     () => CodingAssistBloc(

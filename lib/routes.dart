@@ -33,7 +33,7 @@ GoRouter createAppRouter() {
       GoRoute(
         path: AppRoutes.codingAssist,
         redirect: (context, state) {
-          // Windows など非提供時もルートは残すが、入口は無効。
+          // Web 等で非提供のときのみ設定へ。
           if (!CodingAssistAvailability.isUiEnabled) {
             return AppRoutes.apiKeys;
           }
