@@ -1304,6 +1304,8 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
                   // ⌘/ または Ctrl+/ は re_editor 既定。ブロックコメントは無効化（§2.2.3）。
                   shortcutsActivatorsBuilder:
                       const CodingAssistShortcutsActivatorsBuilder(),
+                  // 括弧自動閉じは日本語 IME 変換中に選択／挿入がずれやすいのでオフ。
+                  autocompleteSymbols: false,
                   commentFormatter: CodingSyntax.commentFormatterForPath(
                     widget.activeTabPath,
                   ),

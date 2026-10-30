@@ -7,6 +7,7 @@ import 'coding_path_resolver.dart';
 import 'coding_prompt_action.dart';
 import 'coding_symbol_format.dart';
 import 'coding_symbol_index.dart';
+import 'coding_text_file.dart';
 import 'coding_workspace_scan.dart';
 
 /// 検査文に添える依頼文の最大文字数。
@@ -799,7 +800,7 @@ final class CodingAgentTools {
         );
       }
 
-      var text = await file.readAsString();
+      var text = await CodingTextFile.read(file);
       var truncated = false;
       if (text.length > readCharLimit) {
         text = text.substring(0, readCharLimit);
@@ -836,7 +837,7 @@ final class CodingAgentTools {
         if (!CodingWorkspaceScan.isTextFile(entity.path)) return;
         String content;
         try {
-          content = await entity.readAsString();
+          content = await CodingTextFile.read(entity);
         } catch (_) {
           return;
         }

@@ -34,6 +34,7 @@ import '../../domain/coding_pubspec_package_change.dart';
 import '../../domain/coding_symbol_index.dart';
 import '../../domain/coding_task_evaluation.dart';
 import '../../domain/coding_file_tree.dart';
+import '../../domain/coding_text_file.dart';
 import '../../domain/coding_untitled_file.dart';
 import '../../domain/coding_folder_expansion.dart';
 import '../../domain/coding_user_history_view.dart';
@@ -1010,7 +1011,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     }
     try {
       final abs = p.join(root, rel);
-      final content = await File(abs).readAsString();
+      final content = await CodingTextFile.read(File(abs));
       emit(
         state.copyWith(
           openTabs: [
@@ -1022,6 +1023,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           revealOffset: revealOffset,
           revealLength: revealLength,
           clearRevealLine: reveal == null,
+          bumpEditorBufferEpoch: true,
         ),
       );
     } catch (e) {
@@ -1156,7 +1158,11 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           t,
     ];
     emit(
-      state.copyWith(openTabs: next, workspaceStatusMessage: '置換結果をタブに反映しました'),
+      state.copyWith(
+        openTabs: next,
+        workspaceStatusMessage: '置換結果をタブに反映しました',
+        bumpEditorBufferEpoch: true,
+      ),
     );
   }
 
@@ -1447,7 +1453,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
       final file = File(p.join(root, rel));
       final existing =
           open?.content ??
-          (await file.exists() ? await file.readAsString() : '');
+          (await file.exists() ? await CodingTextFile.read(file) : '');
       if (existing.trim().isEmpty) {
         marked.add(
           patch.relativePath == rel ? patch : patch.copyWith(relativePath: rel),
@@ -1669,7 +1675,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     final file = File(p.join(root, rel));
     if (await file.exists()) {
       try {
-        return await file.readAsString();
+        return await CodingTextFile.read(file);
       } catch (_) {}
     }
     return '';
@@ -1705,7 +1711,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     final file = File(p.join(root, rel));
     if (!await file.exists()) return null;
     try {
-      return await file.readAsString();
+      return await CodingTextFile.read(file);
     } catch (_) {
       return null;
     }
@@ -2606,7 +2612,7 @@ $avoid$guidance
     final file = File(p.join(root, rel));
     if (!file.existsSync()) return null;
     try {
-      return file.readAsStringSync();
+      return CodingTextFile.readSync(file);
     } catch (_) {
       return null;
     }
@@ -4343,7 +4349,7 @@ $avoid$guidance
 
       final existing =
           open?.content ??
-          (await file.exists() ? await file.readAsString() : '');
+          (await file.exists() ? await CodingTextFile.read(file) : '');
       if (existing.trim().isNotEmpty) {
         final conflict = patch.copyWith(
           relativePath: rel,
@@ -4421,6 +4427,7 @@ $avoid$guidance
           activeTabPath: rel,
           pendingPatches: pending,
           thread: thread,
+          bumpEditorBufferEpoch: true,
           agentStatusMessage: auto ? '自動作成: $rel' : '作成: $rel',
           clearError: true,
         ),
@@ -4505,7 +4512,7 @@ $avoid$guidance
       }
       if (best?.status != CodingPatchApplyStatus.applied &&
           await file.exists()) {
-        final disk = await file.readAsString();
+        final disk = await CodingTextFile.read(file);
         if (open == null || disk != open.content) {
           consider(tryApply(disk));
         }
@@ -4617,6 +4624,7 @@ $avoid$guidance
           activeTabPath: rel,
           pendingPatches: pending,
           thread: thread,
+          bumpEditorBufferEpoch: true,
           agentStatusMessage: auto ? '自動適用: $rel' : '適用: $rel',
         ),
       );
@@ -4800,7 +4808,7 @@ $avoid$guidance
         files.add(
           CodingAttachedOpenFile(
             relativePath: rel,
-            content: await file.readAsString(),
+            content: await CodingTextFile.read(file),
           ),
         );
       } catch (_) {
@@ -5228,7 +5236,7 @@ $avoid$guidance
           nextTabs.add(tab);
         } else {
           nextTabs.add(
-            tab.copyWith(content: await file.readAsString(), dirty: false),
+            tab.copyWith(content: await CodingTextFile.read(file), dirty: false),
           );
         }
       }
@@ -5244,6 +5252,7 @@ $avoid$guidance
           openTabs: nextTabs,
           activeTabPath: active,
           clearActiveTab: active == null,
+          bumpEditorBufferEpoch: true,
           workspaceStatusMessage:
               '${index.rootLabel}（${index.relativeFiles.length} files）',
         ),
@@ -5269,7 +5278,7 @@ $avoid$guidance
         emit(state.copyWith(errorMessage: '再読込できません（ディスクにありません）: $rel'));
         return;
       }
-      final content = await file.readAsString();
+      final content = await CodingTextFile.read(file);
       emit(
         state.copyWith(
           openTabs: [
@@ -5281,6 +5290,7 @@ $avoid$guidance
           ],
           workspaceStatusMessage: '再読込: $rel',
           clearError: true,
+          bumpEditorBufferEpoch: true,
         ),
       );
     } catch (e) {
@@ -5380,6 +5390,7 @@ $avoid$guidance
                   CodingOpenTab(relativePath: rel, content: ''),
                 ],
           activeTabPath: rel,
+          bumpEditorBufferEpoch: !alreadyOpen,
           workspaceStatusMessage: '作成: $rel',
           clearError: true,
         ),

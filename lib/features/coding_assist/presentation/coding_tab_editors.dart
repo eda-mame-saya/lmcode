@@ -59,6 +59,9 @@ class CodingTabEditors {
     for (final entry in open.entries) {
       final existing = _byPath[entry.key];
       if (existing != null && existing.text != entry.value) {
+        // IME 変換中や連打入力中に、遅れて届いた BLoC 本文でコントローラを
+        // 上書きすると、変換が壊れ insert っぽい挙動やスペース欠落になる。
+        if (existing.isComposing) continue;
         replaceText(existing, entry.value);
       }
     }

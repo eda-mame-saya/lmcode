@@ -64,12 +64,19 @@ abstract final class CodingWorkspaceScan {
     'yaml',
     'yml',
     'json',
+    'jsonc',
+    'jsonl',
+    'csv',
+    'tsv',
     'md',
     'markdown',
     'mdx',
     'txt',
+    'log',
     'xml',
     'xhtml',
+    'htm',
+    'html',
     'gradle',
     'kts',
     'kt',
@@ -78,6 +85,12 @@ abstract final class CodingWorkspaceScan {
     'm',
     'h',
     'mm',
+    'c',
+    'cc',
+    'cpp',
+    'cxx',
+    'hpp',
+    'hh',
     'plist',
     'pbxproj',
     'xcworkspacedata',
@@ -86,7 +99,6 @@ abstract final class CodingWorkspaceScan {
     'xib',
     'properties',
     'cmake',
-    'html',
     'css',
     'js',
     'mjs',
@@ -94,17 +106,40 @@ abstract final class CodingWorkspaceScan {
     'ts',
     'tsx',
     'jsx',
+    'vue',
+    'svelte',
     'scss',
     'sass',
     'less',
     'svg',
     'sh',
+    'bash',
+    'zsh',
+    'fish',
+    'bat',
+    'cmd',
+    'ps1',
     'py',
     'pyi',
+    'rb',
+    'go',
+    'rs',
+    'php',
+    'lua',
+    'r',
+    'sql',
     'toml',
     'cfg',
     'ini',
+    'conf',
+    'env',
+    'graphql',
+    'gql',
+    'proto',
     'gitignore',
+    'dockerignore',
+    'editorconfig',
+    'npmrc',
     'metadata',
   };
 
@@ -209,16 +244,28 @@ abstract final class CodingWorkspaceScan {
         name == 'gradle.properties' ||
         name == 'AndroidManifest.xml' ||
         name == 'proguard-rules.pro' ||
+        name == 'Dockerfile' ||
+        name == 'Makefile' ||
+        name == 'CMakeLists.txt' ||
         name.startsWith('vite.config.') ||
         name.startsWith('next.config.') ||
         name.startsWith('tsconfig.')) {
       return true;
     }
-    if (name.startsWith('.') && name != '.gitignore') {
-      // .env 等は読めるが索引には入れない方針でも可。MVP は .gitignore のみ。
-      return name == '.gitignore';
-    }
     final ext = p.extension(path).toLowerCase().replaceFirst('.', '');
+    // ドットファイルでも既知のテキスト拡張子なら読む（.eslintrc.json / .env.local 等）
+    if (name.startsWith('.')) {
+      if (name == '.gitignore' ||
+          name == '.editorconfig' ||
+          name == '.dockerignore' ||
+          name == '.npmrc' ||
+          name == '.nvmrc' ||
+          name == '.env' ||
+          name.startsWith('.env.')) {
+        return true;
+      }
+      return ext.isNotEmpty && textExtensions.contains(ext);
+    }
     // 拡張子なし（Makefile / LICENSE / ユーザー作成ファイル等）も索引に含める
     if (ext.isEmpty) return true;
     return textExtensions.contains(ext);

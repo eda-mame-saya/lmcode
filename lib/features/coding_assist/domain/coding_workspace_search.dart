@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:path/path.dart' as p;
 
+import 'coding_text_file.dart';
 import 'coding_workspace_scan.dart';
 
 /// ワークスペース内テキスト検索の1ヒット。
@@ -82,7 +83,7 @@ abstract final class CodingWorkspaceSearch {
           if (!CodingWorkspaceScan.isTextFile(entity.path)) continue;
           String content;
           try {
-            content = await entity.readAsString();
+            content = await CodingTextFile.read(entity);
           } catch (_) {
             continue;
           }
@@ -195,7 +196,7 @@ abstract final class CodingWorkspaceSearch {
             content = contentOverrides[rel]!;
           } else {
             try {
-              content = await entity.readAsString();
+              content = await CodingTextFile.read(entity);
             } catch (_) {
               continue;
             }

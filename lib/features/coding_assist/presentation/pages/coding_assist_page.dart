@@ -83,6 +83,15 @@ class _ToggleAgentIntent extends Intent {
   const _ToggleAgentIntent();
 }
 
+bool _sameEditorTabPaths(List<CodingOpenTab> a, List<CodingOpenTab> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i].relativePath != b[i].relativePath) return false;
+  }
+  return true;
+}
+
 /// エディタ選択、なければキャレット位置の識別子または記号列を検索語にする。
 String? codingAssistEditorSearchQuery(CodeLineEditingController controller) {
   if (!controller.selection.isCollapsed) {
@@ -726,7 +735,10 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
       listenWhen: (p, c) =>
           (p.errorMessage != c.errorMessage && c.errorMessage != null) ||
           p.activeTabPath != c.activeTabPath ||
-          p.openTabs != c.openTabs ||
+          // 手入力の本文更新では sync しない（IME 巻き戻し防止）。
+          // タブ構成の変化とディスク等からの押し込み（editorBufferEpoch）だけ見る。
+          !_sameEditorTabPaths(p.openTabs, c.openTabs) ||
+          p.editorBufferEpoch != c.editorBufferEpoch ||
           p.draftEpoch != c.draftEpoch ||
           p.indentSize != c.indentSize ||
           p.revealLine != c.revealLine ||

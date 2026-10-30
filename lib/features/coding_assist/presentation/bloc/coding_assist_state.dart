@@ -32,6 +32,7 @@ final class CodingAssistState extends Equatable {
     this.index,
     this.openTabs = const [],
     this.activeTabPath,
+    this.editorBufferEpoch = 0,
     this.revealLine,
     this.revealOffset,
     this.revealLength,
@@ -93,6 +94,10 @@ final class CodingAssistState extends Equatable {
   final CodingWorkspaceIndex? index;
   final List<CodingOpenTab> openTabs;
   final String? activeTabPath;
+
+  /// ディスク等からエディタ本文を押し込むときに増やす（手入力の TabContent では増やさない）。
+  /// IME 変換中に BLoC→コントローラへ古い本文が戻るのを防ぐ。
+  final int editorBufferEpoch;
 
   /// エディタで開いたあとスクロールする行（1-based）。消費後にクリア。
   final int? revealLine;
@@ -203,6 +208,8 @@ final class CodingAssistState extends Equatable {
     CodingWorkspaceIndex? index,
     List<CodingOpenTab>? openTabs,
     String? activeTabPath,
+    int? editorBufferEpoch,
+    bool bumpEditorBufferEpoch = false,
     int? revealLine,
     int? revealOffset,
     int? revealLength,
@@ -272,6 +279,9 @@ final class CodingAssistState extends Equatable {
       activeTabPath: clearActiveTab
           ? null
           : (activeTabPath ?? this.activeTabPath),
+      editorBufferEpoch: bumpEditorBufferEpoch
+          ? this.editorBufferEpoch + 1
+          : (editorBufferEpoch ?? this.editorBufferEpoch),
       revealLine: clearRevealLine ? null : (revealLine ?? this.revealLine),
       revealOffset: clearRevealLine
           ? null
@@ -348,6 +358,7 @@ final class CodingAssistState extends Equatable {
           '${t.relativePath}:${t.dirty}:${t.content.length}:${t.content.hashCode}',
     ),
     activeTabPath,
+    editorBufferEpoch,
     revealLine,
     revealOffset,
     revealLength,
