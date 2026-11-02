@@ -355,6 +355,7 @@ class LocalWorkspaceDataSource {
   String _guessMimeType(String path) {
     final lower = path.toLowerCase();
     if (lower.endsWith('.md')) return 'text/markdown';
+    if (lower.endsWith('.mdc')) return 'text/markdown';
     if (lower.endsWith('.txt')) return 'text/plain';
     if (lower.endsWith('.json')) return 'application/json';
     if (lower.endsWith('.csv')) return 'text/csv';

@@ -69,6 +69,7 @@ abstract final class CodingWorkspaceScan {
     'csv',
     'tsv',
     'md',
+    'mdc',
     'markdown',
     'mdx',
     'txt',
