@@ -18,13 +18,13 @@ final class _AgentPromptMenuToggleFavorite extends _AgentPromptMenuPick {
 /// 入力欄下の「＋」とお気に入りショートカット（最大2・1行）。
 class _AgentPromptActionsRow extends StatelessWidget {
   const _AgentPromptActionsRow({
-    required this.enabled,
-    required this.selectionEnabled,
-    required this.taskEvaluateEnabled,
-    required this.favorites,
-    required this.applied,
-    required this.onSelected,
-    required this.onToggleFavorite,
+      required this.enabled,
+      required this.selectionEnabled,
+      required this.taskEvaluateEnabled,
+      required this.favorites,
+      required this.applied,
+      required this.onSelected,
+      required this.onToggleFavorite,
   });
 
   final bool enabled;
@@ -36,18 +36,18 @@ class _AgentPromptActionsRow extends StatelessWidget {
   final ValueChanged<CodingPromptAction> onToggleFavorite;
 
   static const _size = 28.0;
-  static const _width = 80.0;
+  static const _width = 50.0;
   static const _radius = 4.0;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = enabled
-        ? scheme.secondaryContainer
-        : scheme.onSurface.withValues(alpha: 0.08);
+    ? scheme.secondaryContainer
+    : scheme.onSurface.withValues(alpha: 0.08);
     final fg = enabled
-        ? scheme.onSecondaryContainer
-        : scheme.onSurface.withValues(alpha: 0.38);
+    ? scheme.onSecondaryContainer
+    : scheme.onSurface.withValues(alpha: 0.38);
     final favoriteSet = favorites.toSet();
     final appliedSet = applied.toSet();
 
@@ -64,9 +64,9 @@ class _AgentPromptActionsRow extends StatelessWidget {
           onSelected: (pick) {
             switch (pick) {
               case _AgentPromptMenuRun(:final action):
-                onSelected(action);
+              onSelected(action);
               case _AgentPromptMenuToggleFavorite(:final action):
-                onToggleFavorite(action);
+              onToggleFavorite(action);
             }
           },
           itemBuilder: (context) => [
@@ -138,6 +138,7 @@ class _AgentPromptActionsRow extends StatelessWidget {
                 CodingPromptAction.expectDocumentEdit,
               ),
             ),
+            const PopupMenuDivider(),
             _menuItem(
               context,
               action: CodingPromptAction.programAnalyze,
@@ -163,6 +164,7 @@ class _AgentPromptActionsRow extends StatelessWidget {
               enabled: taskEvaluateEnabled,
               isFavorite: favoriteSet.contains(CodingPromptAction.taskEvaluate),
             ),
+            const PopupMenuDivider(),
             _menuItem(
               context,
               action: CodingPromptAction.runFlutterVerify,
@@ -192,11 +194,11 @@ class _AgentPromptActionsRow extends StatelessWidget {
             label: action.shortLabel,
             tooltip: action.menuLabel,
             enabled:
-                enabled &&
-                (action != CodingPromptAction.attachSelection ||
-                    selectionEnabled) &&
-                (action != CodingPromptAction.taskEvaluate ||
-                    taskEvaluateEnabled),
+            enabled &&
+            (action != CodingPromptAction.attachSelection ||
+              selectionEnabled) &&
+            (action != CodingPromptAction.taskEvaluate ||
+              taskEvaluateEnabled),
             applied: appliedSet.contains(action),
             onPressed: () => onSelected(action),
           ),
@@ -207,19 +209,19 @@ class _AgentPromptActionsRow extends StatelessWidget {
 
   PopupMenuItem<_AgentPromptMenuPick> _menuItem(
     BuildContext context, {
-    required CodingPromptAction action,
-    required String hint,
-    required bool isFavorite,
-    bool isApplied = false,
-    bool enabled = true,
+      required CodingPromptAction action,
+      required String hint,
+      required bool isFavorite,
+      bool isApplied = false,
+      bool enabled = true,
   }) {
     final theme = Theme.of(context);
     final labelColor = enabled
-        ? null
-        : theme.colorScheme.onSurface.withValues(alpha: 0.38);
+    ? null
+    : theme.colorScheme.onSurface.withValues(alpha: 0.38);
     final starColor = isFavorite
-        ? theme.colorScheme.tertiary
-        : theme.colorScheme.onSurface.withValues(alpha: 0.45);
+    ? theme.colorScheme.tertiary
+    : theme.colorScheme.onSurface.withValues(alpha: 0.45);
     // アクション無効時も ★ でお気に入り登録できるよう item 自体は有効のまま。
     return PopupMenuItem<_AgentPromptMenuPick>(
       value: enabled ? _AgentPromptMenuRun(action) : null,
@@ -267,12 +269,12 @@ class _AgentPromptActionsRow extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             IconButton(
-              tooltip: isFavorite ? 'お気に入り解除' : 'お気に入り登録（最大2）',
-              onPressed: () {
-                Navigator.of(
-                  context,
-                ).pop(_AgentPromptMenuToggleFavorite(action));
-              },
+              tooltip: isFavorite ? 'お気に入り解除' : 'お気に入り登録（最大4）',
+                onPressed: () {
+                  Navigator.of(
+                    context,
+                  ).pop(_AgentPromptMenuToggleFavorite(action));
+                },
               icon: Icon(
                 isFavorite ? Icons.star : Icons.star_border,
                 size: 18,
@@ -292,11 +294,11 @@ class _AgentPromptActionsRow extends StatelessWidget {
 /// ＋隣の短いお気に入りボタン（高さは＋と同程度）。
 class _AgentPromptFavoriteChip extends StatelessWidget {
   const _AgentPromptFavoriteChip({
-    required this.label,
-    required this.tooltip,
-    required this.enabled,
-    required this.applied,
-    required this.onPressed,
+      required this.label,
+      required this.tooltip,
+      required this.enabled,
+      required this.applied,
+      required this.onPressed,
   });
 
   final String label;
@@ -312,15 +314,15 @@ class _AgentPromptFavoriteChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final bg = !enabled
-        ? scheme.onSurface.withValues(alpha: 0.08)
-        : applied
-        ? scheme.primaryContainer
-        : scheme.secondaryContainer;
+    ? scheme.onSurface.withValues(alpha: 0.08)
+    : applied
+    ? scheme.primaryContainer
+    : scheme.secondaryContainer;
     final fg = !enabled
-        ? scheme.onSurface.withValues(alpha: 0.38)
-        : applied
-        ? scheme.onPrimaryContainer
-        : scheme.onSecondaryContainer;
+    ? scheme.onSurface.withValues(alpha: 0.38)
+    : applied
+    ? scheme.onPrimaryContainer
+    : scheme.onSecondaryContainer;
 
     return Tooltip(
       message: tooltip,

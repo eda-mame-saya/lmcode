@@ -79,6 +79,7 @@ abstract final class CodingSyntax {
   /// ブロックコメントショートカットはオミット（macOS Help 検索と競合）。
   /// 不明拡張子は `null`（コメント操作なし）。
   static CodeCommentFormatter? commentFormatterForPath(String? relativePath) {
+   print("commentFormatterForPath");
     final style = commentStyleForPath(relativePath);
     if (style == null) return null;
     return DefaultCodeCommentFormatter(

@@ -151,7 +151,7 @@ $investigate
 +}
 *** End Patch
 
-【B】新規関数の追加（+ のみ。- 行なし）:
+【B】新規関数の追加（+ のみ。- 行は出さない）:
 挿入行: 42
 *** Begin Patch
 *** Update File: ${samples.updateFile}

@@ -13,7 +13,7 @@ enum CodingPromptAction {
   runFlutterVerify;
 
   /// お気に入り登録の上限（入力欄下は1行に収める）。
-  static const maxFavorites = 2;
+  static const maxFavorites = 4;
 
   /// SharedPreferences 用 ID（[name] と同一）。
   String get id => name;
