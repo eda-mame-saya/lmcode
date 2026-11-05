@@ -37,6 +37,7 @@ import '../../domain/coding_indent_aligner.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_task_evaluation.dart';
+import '../../domain/coding_terminal_shell.dart';
 import '../../domain/coding_ui_font_sizes.dart';
 import '../../domain/coding_unsaved_editor.dart';
 import '../../domain/coding_workspace_search.dart';
@@ -54,6 +55,7 @@ import '../widget/coding_minimap.dart';
 import '../widget/coding_ram_usage_indicator.dart';
 import '../widget/coding_shortcuts.dart';
 import '../widget/coding_syntax.dart';
+import '../widget/coding_flutter_create_dialog.dart';
 import '../widget/coding_terminal_panel.dart';
 import '../widget/coding_user_prompt_preview.dart';
 
@@ -209,6 +211,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
   double _agentWidth = _agentWidthDefault;
   bool _hasEditorSelection = false;
   int _boundDraftEpoch = 0;
+  int _boundEditorBufferEpoch = 0;
   bool _allowPop = false;
   bool _leaveCheckOpen = false;
   static const _leftMenuWidth = 280.0;
@@ -233,8 +236,17 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
   }
 
   void _replaceEditorText(CodeLineEditingController controller, String text) {
+    final previous = controller.selection.extent;
     _applyingEditorText = true;
+    // re_editor の text 代入は選択を (0,0) に戻すので、元のキャレットへ戻す。
     controller.text = text;
+    final lines = controller.codeLines;
+    final index = previous.index.clamp(0, lines.length - 1);
+    final offset = previous.offset.clamp(0, lines[index].length);
+    controller.selection = CodeLineSelection.collapsed(
+      index: index,
+      offset: offset,
+    );
     _applyingEditorText = false;
   }
 
@@ -319,6 +331,10 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
     await _loadCustomModels();
     if (!context.mounted) return;
     context.read<CodingAssistBloc>().add(const CodingAssistStarted());
+  }
+
+  Future<void> _openCustomPrompts(BuildContext context) async {
+    await context.push<void>(AppRoutes.customPrompts);
   }
 
   Future<void> _loadCustomModels() async {
@@ -689,7 +705,17 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
     );
   }
 
+  Future<void> _createFlutterProject(BuildContext context) async {
+    final path = await showCodingFlutterCreateDialog(context);
+    if (path == null || !context.mounted) return;
+    context.read<CodingAssistBloc>().add(
+      CodingAssistOpenWorkspaceRequested(path),
+    );
+  }
+
   void _syncEditor(CodingAssistState state) {
+    final pushContent = state.editorBufferEpoch != _boundEditorBufferEpoch;
+    _boundEditorBufferEpoch = state.editorBufferEpoch;
     _tabs.sync(
       activePath: state.activeTabPath,
       tabs: [
@@ -697,6 +723,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
           (path: tab.relativePath, content: tab.content),
       ],
       replaceText: _replaceEditorText,
+      pushContent: pushContent,
     );
     _retireEditorsAfterFrame();
   }
@@ -799,6 +826,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                       customModels: _customModels,
                       onOpenFolder: () => _pickFolder(context),
                       onOpenEngineSettings: () => _openEngineSettings(context),
+                      onOpenCustomPrompts: () => _openCustomPrompts(context),
                     ),
                     Expanded(
                       child: state.isLoading
@@ -847,6 +875,8 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                                                   ),
                                               onOpenFolder: () =>
                                                   _pickFolder(context),
+                                              onCreateFlutterProject: () =>
+                                                  _createFlutterProject(context),
                                               onCollapse: () => setState(
                                                 () => _leftMenuCollapsed = true,
                                               ),

@@ -165,12 +165,14 @@ class _LeftMenuPane extends StatefulWidget {
     required this.state,
     required this.onOpenRecent,
     required this.onOpenFolder,
+    required this.onCreateFlutterProject,
     required this.onCollapse,
   });
 
   final CodingAssistState state;
   final ValueChanged<String> onOpenRecent;
   final VoidCallback onOpenFolder;
+  final VoidCallback onCreateFlutterProject;
   final VoidCallback onCollapse;
 
   @override
@@ -674,6 +676,11 @@ class _LeftMenuPaneState extends State<_LeftMenuPane> {
         padding: const EdgeInsets.all(12),
         children: [
           const Text('ワークスペース', style: TextStyle(fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: widget.onCreateFlutterProject,
+            child: const Text('Flutterプロジェクト作成'),
+          ),
           const SizedBox(height: 8),
           FilledButton.tonal(
             onPressed: widget.onOpenFolder,

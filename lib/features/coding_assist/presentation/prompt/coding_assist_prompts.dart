@@ -1,6 +1,17 @@
+import '../../domain/coding_custom_prompt_id.dart';
+import '../../domain/coding_custom_prompts.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_workspace_kind.dart';
 import '../../domain/entities/coding_assist_entities.dart';
+
+String _customOr(
+  CodingCustomPromptId id,
+  String builtIn, {
+  required bool applyCustom,
+}) {
+  if (!applyCustom) return builtIn;
+  return CodingCustomPrompts.apply(id, builtIn);
+}
 
 /// 自動検証の失敗ログを、既存のエラー解析指示つきで Agent に渡す。
 /// チャット上の先頭は `【自動検証 n/3】flutter analyze` のようになる。
@@ -19,8 +30,11 @@ String codingAssistAutoVerifyFixPrompt({
 const codingAssistFlutterVerifyMarker = '【テスト実行】';
 
 /// 「テストを実行」ボタン用。送信後にアプリが analyze と test を回す。
-String codingAssistRunFlutterVerifyPrompt(String draft) {
-  const rules =
+String codingAssistRunFlutterVerifyPrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  final builtIn =
       '''
 【テスト実行】
 今の実装を flutter analyze と flutter test で確認する。
@@ -31,8 +45,13 @@ String codingAssistRunFlutterVerifyPrompt(String draft) {
 - 「新規ソース提案を期待」と同時なら Add File の形式を守る
 - 失敗ログが後から渡されたときは、そのログに対する修正 Patch を出す
 
-${CodingWorkspaceKindDetect.flutterRegressionTestRule}
+${applyCustom ? CodingWorkspaceKindDetect.flutterRegressionTestRule : CodingWorkspaceKindDetect.flutterRegressionTestRuleBuiltIn}
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.runFlutterVerify,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
@@ -44,6 +63,7 @@ String codingAssistFlutterVerifyReportPrompt({
   required bool passed,
   required List<({String label, int? exitCode, bool timedOut, String log})>
   commands,
+  bool applyCustom = true,
 }) {
   final verdict = passed ? '合格' : '不合格';
   final blocks = commands
@@ -54,39 +74,56 @@ String codingAssistFlutterVerifyReportPrompt({
         return '### ${command.label}\n終了コード: $code$timeout\n$log';
       })
       .join('\n\n');
-  return '''
+  const builtIn = '''
 【検証結果の報告】
 アプリがコマンドを実行し終えた。判定の材料は下の結果だけです。あなたはコマンドを実行したことにしない。
 
 パッチ（*** Begin Patch / *** End Patch）も修正案も出さない。回答の最後は次の報告だけにする。
 
 ## 検証レポート
-- 判定: $verdict（この判定は変えない）
+- 判定: {{verdict}}（この判定は変えない）
 - 何をテストしたか: 実行したコマンドと、ログにある対象（テスト名、ファイル、issue）。ログに無い対象は書かない
 - 合格または不合格を分けた結果: 終了コードと、判断に使ったログの行
 
-$blocks
-'''
-      .trim();
+{{blocks}}
+''';
+  final template = _customOr(
+    CodingCustomPromptId.flutterVerifyReport,
+    builtIn,
+    applyCustom: applyCustom,
+  );
+  return CodingCustomPrompts.substitute(template, {
+    'verdict': verdict,
+    'blocks': blocks,
+  }).trim();
 }
 
 /// 同一実行の1回目。最後に実行した内容と、今の内容だけを新しい会話へ載せる。
 String codingAssistAutoLoopContinuePrompt({
   required String lastBody,
   required String currentBody,
+  bool applyCustom = true,
 }) {
-  return '''
+  const builtIn = '''
 【ループ検知】
 同じ応答、または同じコマンド結果が繰り返されたため、新しい会話で自動実行を続けます。
 直前と同じ Patch、同じツール、同じ修正を出さない。別の原因と別の直し方を検討する。
 
 【最後に実行した内容】
-$lastBody
+{{lastBody}}
 
 【現在実行している内容】
-$currentBody
-'''
-      .trim();
+{{currentBody}}
+''';
+  final template = _customOr(
+    CodingCustomPromptId.autoLoopContinue,
+    builtIn,
+    applyCustom: applyCustom,
+  );
+  return CodingCustomPrompts.substitute(template, {
+    'lastBody': lastBody,
+    'currentBody': currentBody,
+  }).trim();
 }
 
 /// 「エラー解析」ボタン用。貼り付け済みエラー本文に解析・修正指示を付与する。
@@ -98,13 +135,16 @@ String codingAssistErrorAnalyzePrompt(
   bool omitReadFile = false,
   bool bodiesSupplied = false,
   CodingWorkspaceKind kind = CodingWorkspaceKind.flutter,
+  bool applyCustom = true,
 }) {
   final samples = CodingWorkspaceKindDetect.samplesFor(kind);
   final shortageExample = kind == CodingWorkspaceKind.flutter
       ? '相対/パス.dart'
       : samples.addFile;
   final regression = samples.usesFlutterTests
-      ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+      ? (applyCustom
+            ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+            : CodingWorkspaceKindDetect.flutterRegressionTestRuleBuiltIn)
       : '';
   final investigate = bodiesSupplied
       ? '2. 行番号は渡された本文の1行目から数える。渡したファイルだけを直す。一覧に無いパスは書かない。read_file・list_dir・grep・不足: は書かない。'
@@ -126,7 +166,7 @@ $shortageExample'''
             ? '\n自動実行中は、上の list_dir・grep も read_file も書かない。test/ のパスは渡された本文から決める。本文に無ければ 不足: と相対パスだけを書く。'
             : '\n自動実行中は、上の list_dir・grep も read_file も書かない。本文に無ければ 不足: と相対パスだけを書く。')
       : '';
-  final rules =
+  final builtIn =
       '''
 【エラー解析の指示・最優先で厳守】
 貼り付けたビルド／実行エラーの原因を調べ、**修正案は必ず UI カード用の Begin/End Patch 形式だけ**で出す。
@@ -190,14 +230,28 @@ $unknown
 
 $regression$autoReads
 ''';
+  final id = bodiesSupplied
+      ? CodingCustomPromptId.errorAnalyzeBodies
+      : omitReadFile
+      ? CodingCustomPromptId.errorAnalyzeAuto
+      : CodingCustomPromptId.errorAnalyze;
+  final rules = _customOr(id, builtIn, applyCustom: applyCustom);
   final body = errorText.trim();
   if (body.isEmpty) return rules.trim();
   return '【エラー文言】\n$body\n\n$rules'.trim();
 }
 
 /// 「簡潔に表示」ボタン用。通常送信に簡潔指示を付与する。
-String codingAssistConcisePrompt(String draft) {
-  const rules = '【指示】回答は短く簡潔に。冗長な説明は避けてください。';
+String codingAssistConcisePrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '【指示】回答は短く簡潔に。冗長な説明は避けてください。';
+  final rules = _customOr(
+    CodingCustomPromptId.concise,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules;
   return '$body\n\n$rules';
@@ -207,18 +261,21 @@ String codingAssistConcisePrompt(String draft) {
 String codingAssistExpectFileOutputPrompt(
   String draft, {
   CodingWorkspaceKind kind = CodingWorkspaceKind.flutter,
+  bool applyCustom = true,
 }) {
   final samples = CodingWorkspaceKindDetect.samplesFor(kind);
   final searchHint = samples.usesFlutterTests
       ? '同機能の features、同種の util、test の並び'
       : '同じ種類のソースが置いてあるディレクトリ';
   final regression = samples.usesFlutterTests
-      ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+      ? (applyCustom
+            ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+            : CodingWorkspaceKindDetect.flutterRegressionTestRuleBuiltIn)
       : '';
   final otherLanguageBan = samples.usesFlutterTests
       ? ''
       : '- lib/ や test/ や pubspec.yaml や *_test.dart は Flutter 用なので使わない\n';
-  final rules =
+  final builtIn =
       '''
 【新規ソース提案の指示・最優先で厳守】
 この依頼では新規ソースファイルの作成案を期待します。
@@ -260,14 +317,22 @@ String codingAssistExpectFileOutputPrompt(
 $otherLanguageBan
 $regression
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.expectFileOutput,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
 }
 
 /// 「プログラム分析」ボタン用。取り込み／エディタ内容の説明依頼。
-String codingAssistProgramAnalyzePrompt([String draft = '']) {
-  const rules = '''
+String codingAssistProgramAnalyzePrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '''
 【プログラム分析の指示】
 取り込まれているソース（なければ直前に付与した開いているファイル）を読み、日本語で分かりやすく説明してください。
 
@@ -280,6 +345,11 @@ String codingAssistProgramAnalyzePrompt([String draft = '']) {
 Begin/End Patch やコード変更案は出さない（説明のみ）。
 ツールで別ファイルを広く探索する必要はない。付与された内容を正とする。
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.programAnalyze,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
@@ -289,12 +359,13 @@ Begin/End Patch やコード変更案は出さない（説明のみ）。
 String codingAssistTaskDecomposePrompt(
   String draft, {
   CodingWorkspaceKind kind = CodingWorkspaceKind.flutter,
+  bool applyCustom = true,
 }) {
   final samples = CodingWorkspaceKindDetect.samplesFor(kind);
   final testTask = samples.usesFlutterTests
       ? '- Flutter で振る舞いを追加・修正するタスクがあるときは、対応する test/ の *_test.dart を別タスクにする（（新規）または（既存）。パッチは出さない）'
       : '- テスト用ファイルを別タスクにするのは、このワークスペースに既存のテスト配置があるときだけ。Flutter の test/ に合わせない';
-  final rules =
+  final builtIn =
       '''
 【タスク分解の指示・最優先で厳守】
 与えられた依頼を、あとで一つずつ実行できる小さなタスクに分解して提示してください。
@@ -344,14 +415,22 @@ $testTask
 
 目的のあとは番号付きの実行タスクだけ。目的以外の前置きや締めの長文は不要。
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.taskDecompose,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
 }
 
 /// 「ドキュメント作成を期待」ボタン用。文書の新規ファイルだけを出し、検証は走らせない。
-String codingAssistExpectDocumentCreatePrompt(String draft) {
-  const rules = '''
+String codingAssistExpectDocumentCreatePrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '''
 【ドキュメント作成の指示・最優先で厳守】
 この依頼では文書の新規作成だけを期待します。
 ソース、テスト、設定ファイルは出さない。この送信のあと flutter analyze と flutter test は走らない。
@@ -386,14 +465,22 @@ String codingAssistExpectDocumentCreatePrompt(String draft) {
 - 関数単位の Update File
 - ファイル名だけのパス
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.expectDocumentCreate,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
 }
 
 /// 「修正ドキュメント提案を期待」ボタン用。節単位の文書修正。検証は走らせない。
-String codingAssistExpectDocumentEditPrompt(String draft) {
-  const rules = '''
+String codingAssistExpectDocumentEditPrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '''
 【ドキュメント修正の指示・最優先で厳守】
 既存の文書を、節または連続する範囲で直します。関数単位ではありません。
 ソース、テスト、設定ファイルは出さない。この送信のあと flutter analyze と flutter test は走らない。
@@ -433,6 +520,11 @@ String codingAssistExpectDocumentEditPrompt(String draft) {
 - Add File（新規文書は「ドキュメント作成を期待」）
 - 既存修正なのに置換範囲が無い／新しい節なのに挿入行が無い
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.expectDocumentEdit,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
@@ -456,15 +548,18 @@ bool codingTextSkipsFlutterVerify(String text) {
 String codingAssistExpectFixProposalPrompt(
   String draft, {
   CodingWorkspaceKind kind = CodingWorkspaceKind.flutter,
+  bool applyCustom = true,
 }) {
   final samples = CodingWorkspaceKindDetect.samplesFor(kind);
   final regression = samples.usesFlutterTests
-      ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+      ? (applyCustom
+            ? CodingWorkspaceKindDetect.flutterRegressionTestRule
+            : CodingWorkspaceKindDetect.flutterRegressionTestRuleBuiltIn)
       : '';
   final otherLanguageBan = samples.usesFlutterTests
       ? ''
       : '- lib/ や test/ や pubspec.yaml は Flutter 用なので使わない\n';
-  final rules =
+  final builtIn =
       '''
 【修正ソース提案の指示・最優先で厳守】
 既存関数の修正は関数全体を選択して置換、**新規関数の追加は提案した行へ挿入**します。
@@ -522,6 +617,11 @@ String codingAssistExpectFixProposalPrompt(
 $otherLanguageBan
 $regression
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.expectFixProposal,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = draft.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();
@@ -573,8 +673,11 @@ const codingAssistTaskDecomposeHint =
     '押すと適用（もう一度で解除）。最初に目的、続けて細かい実行タスクを出す指示を送信時に付けます。ソースは出しません。';
 
 /// 「タスク評価」用。分解結果を別会話で見直す。元の依頼文は含めない。
-String codingAssistTaskEvaluatePrompt(String tasks) {
-  const rules = '''
+String codingAssistTaskEvaluatePrompt(
+  String tasks, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '''
 【タスク評価の指示・最優先で厳守】
 これはタスクを出した会話の続きではありません。下のタスク案を、初めて見るものとして評価してください。
 同じ流れで出した側が「問題ない」とまとめるのを避けるため、別の会話に移しています。
@@ -611,6 +714,11 @@ String codingAssistTaskEvaluatePrompt(String tasks) {
 - 実装そのもの
 - 元の依頼文の再構成
 ''';
+  final rules = _customOr(
+    CodingCustomPromptId.taskEvaluate,
+    builtIn,
+    applyCustom: applyCustom,
+  );
   final body = tasks.trim();
   if (body.isEmpty) return rules.trim();
   return '$body\n\n$rules'.trim();

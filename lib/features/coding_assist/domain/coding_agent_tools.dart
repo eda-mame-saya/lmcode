@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'coding_custom_prompt_id.dart';
+import 'coding_custom_prompts.dart';
 import 'coding_generation_repeat.dart';
 import 'coding_path_resolver.dart';
 import 'coding_prompt_action.dart';
@@ -391,16 +393,28 @@ String codingSuppliedFileBodies(List<({String path, String body})> reads) {
 /// 検査のあと、未着手の `read_file` を開いて検査 API を続けてよい回数。
 const codingPostInspectUnreadRounds = 2;
 
-/// 検査・再指示の system に足す。既読の読み直しだけを禁じ、未着手のパスは読む。
-const codingDeliverableSystemSuffix =
+/// 検査・再指示の system に足す。既読の読み直しだけを禁じ、未着手のパスは読む（組み込み）。
+const codingDeliverableSystemSuffixBuiltIn =
     '【この送信】一覧の既読パスは read_file しない。'
     'まだ開いていないパスが必要なら、そのパスだけ read_file する。'
     '足りているなら完了の形だけを書く。';
 
-/// 本文を渡したあとの検査・再指示。開く前の `不足:` の型を取り消す。
-const codingDeliverableCloseSystemSuffix =
+/// 本文を渡したあとの検査・再指示。開く前の `不足:` の型を取り消す（組み込み）。
+const codingDeliverableCloseSystemSuffixBuiltIn =
     '【この送信】行番号は read_file ではなく、上の【既読の本文】の1行目から数える。'
     '不足:・read_file・list_dir・grep は書かない。完了の形だけを書く。';
+
+/// 検査・再指示の system に足す。既読の読み直しだけを禁じ、未着手のパスは読む。
+String get codingDeliverableSystemSuffix => CodingCustomPrompts.apply(
+      CodingCustomPromptId.deliverable,
+      codingDeliverableSystemSuffixBuiltIn,
+    );
+
+/// 本文を渡したあとの検査・再指示。開く前の `不足:` の型を取り消す。
+String get codingDeliverableCloseSystemSuffix => CodingCustomPrompts.apply(
+      CodingCustomPromptId.deliverableClose,
+      codingDeliverableCloseSystemSuffixBuiltIn,
+    );
 
 /// 渡した本文のあとに、まだ `不足:` や読み取りを求めている応答か。
 ///

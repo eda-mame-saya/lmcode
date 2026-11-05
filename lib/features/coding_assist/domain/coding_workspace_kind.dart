@@ -2,6 +2,9 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import 'coding_custom_prompt_id.dart';
+import 'coding_custom_prompts.dart';
+
 /// S16 ワークスペースの開発プロファイル。
 enum CodingWorkspaceKind {
   /// `pubspec.yaml` がある（第一ターゲット）。
@@ -199,9 +202,8 @@ abstract final class CodingWorkspaceKindDetect {
     CodingWorkspaceKind.generic => '汎用',
   };
 
-  /// Flutter の機能追加・修正で、`test/` に回帰テストを同梱する指示。
-  /// 平文送信は system に、＋メニューの実装系は user 側にも載せる。
-  static const flutterRegressionTestRule = '''
+  /// Flutter の機能追加・修正で、`test/` に回帰テストを同梱する指示（組み込み既定）。
+  static const flutterRegressionTestRuleBuiltIn = '''
 Flutter の回帰テスト（Flutter ワークスペースで、Dart の振る舞いを追加または修正するときだけ）:
 - 実装と同じ応答で test/ の *_test.dart も追加または更新する。一部の修正で他の機能が壊れないことを、あとから走る flutter test で見つける
 - 出す前に list_dir または grep で test/ を見る。対象の *_test.dart があれば Update File、無ければ Add File
@@ -212,15 +214,41 @@ Flutter の回帰テスト（Flutter ワークスペースで、Dart の振る�
 - コメント・文書・プロンプト文言だけ、テスト自身だけの修正、文法エラーだけで振る舞いが変わらないときは、新しいテストを足さない
 ''';
 
+  /// Flutter の機能追加・修正で、`test/` に回帰テストを同梱する指示。
+  /// 平文送信は system に、＋メニューの実装系は user 側にも載せる。
+  static String get flutterRegressionTestRule => CodingCustomPrompts.apply(
+        CodingCustomPromptId.flutterRegression,
+        flutterRegressionTestRuleBuiltIn,
+      );
+
+  static CodingCustomPromptId systemPromptId(CodingWorkspaceKind kind) =>
+      switch (kind) {
+        CodingWorkspaceKind.flutter => CodingCustomPromptId.systemFlutter,
+        CodingWorkspaceKind.swiftXcode => CodingCustomPromptId.systemSwiftXcode,
+        CodingWorkspaceKind.react => CodingCustomPromptId.systemReact,
+        CodingWorkspaceKind.android => CodingCustomPromptId.systemAndroid,
+        CodingWorkspaceKind.python => CodingCustomPromptId.systemPython,
+        CodingWorkspaceKind.generic => CodingCustomPromptId.systemGeneric,
+      };
+
   /// Agent 用 system prompt 本文（ワークスペースパス／樹は呼び出し側で追記）。
-  static String systemPrompt(CodingWorkspaceKind kind) => switch (kind) {
-    CodingWorkspaceKind.flutter => _flutterPrompt,
-    CodingWorkspaceKind.swiftXcode => _swiftXcodePrompt,
-    CodingWorkspaceKind.react => _reactPrompt,
-    CodingWorkspaceKind.android => _androidPrompt,
-    CodingWorkspaceKind.python => _pythonPrompt,
-    CodingWorkspaceKind.generic => _genericPrompt,
-  };
+  ///
+  /// [applyCustom] が false のときは組み込み既定のみ（S17 の「デフォルト」表示用）。
+  static String systemPrompt(
+    CodingWorkspaceKind kind, {
+    bool applyCustom = true,
+  }) {
+    if (applyCustom) {
+      final override = CodingCustomPrompts.overrideOf(systemPromptId(kind));
+      if (override != null) return override;
+    }
+    return _builtInSystemPrompt(
+      kind,
+      regression: applyCustom
+          ? flutterRegressionTestRule
+          : flutterRegressionTestRuleBuiltIn,
+    );
+  }
 
   static String _promptBody({
     required String roleLine,
@@ -325,16 +353,25 @@ $pathNotes
     ),
   };
 
-  static String symbolToolsFor(CodingWorkspaceKind kind) {
-    if (kind == CodingWorkspaceKind.flutter) return symbolToolsPrompt;
-    return symbolToolsPrompt.replaceAll(
-      'lib/example.dart',
-      samplesFor(kind).updateFile,
+  static String symbolToolsFor(
+    CodingWorkspaceKind kind, {
+    bool applyCustom = true,
+  }) {
+    final builtIn = kind == CodingWorkspaceKind.flutter
+        ? symbolToolsPromptBuiltIn
+        : symbolToolsPromptBuiltIn.replaceAll(
+            'lib/example.dart',
+            samplesFor(kind).updateFile,
+          );
+    if (!applyCustom) return builtIn;
+    return CodingCustomPrompts.apply(
+      CodingCustomPromptId.symbolTools,
+      builtIn,
     );
   }
 
   /// 言語サーバ起動時だけ system に足す（S16 検討: シンボル探索）。
-  static const symbolToolsPrompt = '''
+  static const symbolToolsPromptBuiltIn = '''
 シンボル探索（起動中の言語サーバのみ。失敗したら list_dir / read_file / grep）:
 ```tool
 {"name":"file_outline","args":{"path":"lib/example.dart"}}
@@ -353,86 +390,91 @@ $pathNotes
 - line は 1 始まり。symbol はその行にある識別子。column は 1 始まりで任意
 ''';
 
-  static final _flutterPrompt = _promptBody(
-    roleLine: 'あなたは Flutter（iOS/Android）開発向けのローカル・コーディングアシスタントです。',
-    listDirExample: 'lib',
-    readFileExample: 'lib/main.dart',
-    grepPathExample: 'lib',
-    updateFileExample: 'lib/example.dart',
-    pathNotes:
-        '- ルートの README.md / pubspec.yaml も対象。無いと決めつけない\n'
-        '- 優先候補: pubspec.yaml、lib/**、test/**\n'
-        '$flutterRegressionTestRule',
-  );
+  /// 互換エイリアス（組み込み既定）。
+  static const symbolToolsPrompt = symbolToolsPromptBuiltIn;
 
-  static final _swiftXcodePrompt = _promptBody(
-    roleLine:
-        'あなたは Xcode（Swift / SwiftUI / UIKit）開発向けのローカル・コーディングアシスタントです。'
-        'xcodebuild・シミュレータは対象外です。',
-    listDirExample: 'Sources',
-    readFileExample: 'Sources/App/ContentView.swift',
-    grepPathExample: 'Sources',
-    updateFileExample: 'Sources/App/ContentView.swift',
-    pathNotes:
-        '- ルートの README.md / Package.swift / Info.plist も対象。無いと決めつけない\n'
-        '- 優先候補: Package.swift、Sources/**、App/**、プロジェクト名と同じフォルダ/**/*.swift\n'
-        '- 新規ファイルはディレクトリ付き（例: App/ContentView.swift や プロジェクト名/ContentView.swift）。ファイル名だけは不可\n'
-        '- ワークスペースのフォルダ名と同じ先頭ディレクトリは残す。落とすとファイル名だけになる\n'
-        '- lib/ や test/ や pubspec.yaml は Flutter 用。Swift では使わない',
-  );
-
-  static final _reactPrompt = _promptBody(
-    roleLine:
-        'あなたは React（React / Next.js / Vite 等）開発向けのローカル・コーディングアシスタントです。'
-        'npm install・ビルド・開発サーバ起動は対象外です。',
-    listDirExample: 'src',
-    readFileExample: 'src/App.tsx',
-    grepPathExample: 'src',
-    updateFileExample: 'src/App.tsx',
-    pathNotes:
-        '- ルートの README.md / package.json / tsconfig.json も対象。無いと決めつけない\n'
-        '- 優先候補: package.json、src/**、app/**、pages/**、components/**、*.tsx／*.jsx\n'
-        '- node_modules / .next / dist は除外済みのことが多い',
-  );
-
-  static final _androidPrompt = _promptBody(
-    roleLine:
-        'あなたは Android（Java / Kotlin）開発向けのローカル・コーディングアシスタントです。'
-        'Gradle ビルド・エミュレータ起動は対象外です。',
-    listDirExample: 'app/src/main',
-    readFileExample: 'app/src/main/java/com/example/MainActivity.kt',
-    grepPathExample: 'app/src',
-    updateFileExample: 'app/src/main/java/com/example/MainActivity.kt',
-    pathNotes:
-        '- ルートの README.md / settings.gradle(.kts) / build.gradle(.kts) / gradle.properties も対象。無いと決めつけない\n'
-        '- 優先候補: AndroidManifest.xml、app/src/**、*.kt／*.java、app/build.gradle(.kts)\n'
-        '- .gradle / build / .cxx は除外済みのことが多い',
-  );
-
-  static final _pythonPrompt = _promptBody(
-    roleLine:
-        'あなたは Python 開発向けのローカル・コーディングアシスタントです。'
-        'pip install・仮想環境作成・テスト実行は対象外です。',
-    listDirExample: 'src',
-    readFileExample: 'src/app/main.py',
-    grepPathExample: 'src',
-    updateFileExample: 'src/app/main.py',
-    pathNotes:
-        '- ルートの README.md / pyproject.toml / requirements.txt / setup.py も対象。無いと決めつけない\n'
-        '- 優先候補: pyproject.toml、requirements.txt、src/**、tests/**、*.py\n'
-        '- __pycache__ / .venv は除外済みのことが多い',
-  );
-
-  static final _genericPrompt = _promptBody(
-    roleLine: 'あなたはローカル・コーディングアシスタントです。',
-    listDirExample: '.',
-    readFileExample: 'README.md',
-    grepPathExample: '.',
-    updateFileExample: 'src/example.txt',
-    pathNotes:
-        '- ルートの README.md も対象。無いと決めつけない\n'
-        '- 新規ファイルはディレクトリ付き。ファイル名だけは不可。lib/ を既定にしない',
-  );
+  static String _builtInSystemPrompt(
+    CodingWorkspaceKind kind, {
+    required String regression,
+  }) =>
+      switch (kind) {
+        CodingWorkspaceKind.flutter => _promptBody(
+            roleLine:
+                'あなたは Flutter（iOS/Android）開発向けのローカル・コーディングアシスタントです。',
+            listDirExample: 'lib',
+            readFileExample: 'lib/main.dart',
+            grepPathExample: 'lib',
+            updateFileExample: 'lib/example.dart',
+            pathNotes:
+                '- ルートの README.md / pubspec.yaml も対象。無いと決めつけない\n'
+                '- 優先候補: pubspec.yaml、lib/**、test/**\n'
+                '$regression',
+          ),
+        CodingWorkspaceKind.swiftXcode => _promptBody(
+            roleLine:
+                'あなたは Xcode（Swift / SwiftUI / UIKit）開発向けのローカル・コーディングアシスタントです。'
+                'xcodebuild・シミュレータは対象外です。',
+            listDirExample: 'Sources',
+            readFileExample: 'Sources/App/ContentView.swift',
+            grepPathExample: 'Sources',
+            updateFileExample: 'Sources/App/ContentView.swift',
+            pathNotes:
+                '- ルートの README.md / Package.swift / Info.plist も対象。無いと決めつけない\n'
+                '- 優先候補: Package.swift、Sources/**、App/**、プロジェクト名と同じフォルダ/**/*.swift\n'
+                '- 新規ファイルはディレクトリ付き（例: App/ContentView.swift や プロジェクト名/ContentView.swift）。ファイル名だけは不可\n'
+                '- ワークスペースのフォルダ名と同じ先頭ディレクトリは残す。落とすとファイル名だけになる\n'
+                '- lib/ や test/ や pubspec.yaml は Flutter 用。Swift では使わない',
+          ),
+        CodingWorkspaceKind.react => _promptBody(
+            roleLine:
+                'あなたは React（React / Next.js / Vite 等）開発向けのローカル・コーディングアシスタントです。'
+                'npm install・ビルド・開発サーバ起動は対象外です。',
+            listDirExample: 'src',
+            readFileExample: 'src/App.tsx',
+            grepPathExample: 'src',
+            updateFileExample: 'src/App.tsx',
+            pathNotes:
+                '- ルートの README.md / package.json / tsconfig.json も対象。無いと決めつけない\n'
+                '- 優先候補: package.json、src/**、app/**、pages/**、components/**、*.tsx／*.jsx\n'
+                '- node_modules / .next / dist は除外済みのことが多い',
+          ),
+        CodingWorkspaceKind.android => _promptBody(
+            roleLine:
+                'あなたは Android（Java / Kotlin）開発向けのローカル・コーディングアシスタントです。'
+                'Gradle ビルド・エミュレータ起動は対象外です。',
+            listDirExample: 'app/src/main',
+            readFileExample: 'app/src/main/java/com/example/MainActivity.kt',
+            grepPathExample: 'app/src',
+            updateFileExample: 'app/src/main/java/com/example/MainActivity.kt',
+            pathNotes:
+                '- ルートの README.md / settings.gradle(.kts) / build.gradle(.kts) / gradle.properties も対象。無いと決めつけない\n'
+                '- 優先候補: AndroidManifest.xml、app/src/**、*.kt／*.java、app/build.gradle(.kts)\n'
+                '- .gradle / build / .cxx は除外済みのことが多い',
+          ),
+        CodingWorkspaceKind.python => _promptBody(
+            roleLine:
+                'あなたは Python 開発向けのローカル・コーディングアシスタントです。'
+                'pip install・仮想環境作成・テスト実行は対象外です。',
+            listDirExample: 'src',
+            readFileExample: 'src/app/main.py',
+            grepPathExample: 'src',
+            updateFileExample: 'src/app/main.py',
+            pathNotes:
+                '- ルートの README.md / pyproject.toml / requirements.txt / setup.py も対象。無いと決めつけない\n'
+                '- 優先候補: pyproject.toml、requirements.txt、src/**、tests/**、*.py\n'
+                '- __pycache__ / .venv は除外済みのことが多い',
+          ),
+        CodingWorkspaceKind.generic => _promptBody(
+            roleLine: 'あなたはローカル・コーディングアシスタントです。',
+            listDirExample: '.',
+            readFileExample: 'README.md',
+            grepPathExample: '.',
+            updateFileExample: 'src/example.txt',
+            pathNotes:
+                '- ルートの README.md も対象。無いと決めつけない\n'
+                '- 新規ファイルはディレクトリ付き。ファイル名だけは不可。lib/ を既定にしない',
+          ),
+      };
 }
 
 /// ＋メニューがパス例に使う、ワークスペース種別ごとの見本。

@@ -29,7 +29,10 @@ abstract final class CodingIndentAligner {
         (endLineIndex ?? (lines.length - 1)).clamp(start, lines.length - 1);
 
     if (_usesBraceIndent(relativePath)) {
-      final levels = _braceLevels(lines);
+      final levels = _braceLevels(
+        lines,
+        indentCaseBody: !_isSwift(relativePath),
+      );
       for (var i = start; i <= end; i++) {
         lines[i] = _applyLevel(lines[i], levels[i], size);
       }
@@ -73,31 +76,112 @@ abstract final class CodingIndentAligner {
     };
   }
 
+  static bool _isSwift(String? relativePath) {
+    if (relativePath == null) return false;
+    return p.extension(relativePath).toLowerCase() == '.swift';
+  }
+
   /// 各行の表示インデント段数（0 始まり）。
-  static List<int> _braceLevels(List<String> lines) {
+  ///
+  /// 括弧の深さに加えて `:` による継続行を 1 段下げる:
+  /// - 行末が `:`（`child:` など）→ 次の行から、その式が終わるまで +1
+  /// - 行頭が `:` / `?`（三項演算子・初期化子リスト）→ その行（と続く括弧内）を +1
+  /// - [indentCaseBody] のとき `case` / `default` ラベル配下を +1
+  static List<int> _braceLevels(
+    List<String> lines, {
+    required bool indentCaseBody,
+  }) {
     final levels = List<int>.filled(lines.length, 0);
     var depth = 0;
     var inBlockComment = false;
+    // 継続行の基準となる括弧深さ。要素ごとに +1 段。
+    final continuations = <int>[];
+    // case ラベルが置かれた括弧深さ。要素ごとに +1 段。
+    final caseDepths = <int>[];
 
     for (var i = 0; i < lines.length; i++) {
       final raw = lines[i];
       final trimmed = raw.trimLeft();
       if (trimmed.isEmpty) {
-        levels[i] = depth;
+        levels[i] = depth + continuations.length + caseDepths.length;
         continue;
       }
 
       // 行頭の閉じ括弧ぶんだけこの行の段を下げる
       final leadClose = _leadingCloserCount(trimmed, inBlockComment);
-      final lineLevel = depth - leadClose;
-      levels[i] = lineLevel < 0 ? 0 : lineLevel;
+      var lineLevel = depth - leadClose;
+      if (lineLevel < 0) lineLevel = 0;
+
+      while (continuations.isNotEmpty && continuations.last > lineLevel) {
+        continuations.removeLast();
+      }
+      while (caseDepths.isNotEmpty && caseDepths.last > lineLevel) {
+        caseDepths.removeLast();
+      }
+
+      final isLabel = !inBlockComment && _isCaseLabel(trimmed);
+      if (!inBlockComment &&
+          _startsWithContinuationOperator(trimmed) &&
+          (continuations.isEmpty || continuations.last != lineLevel)) {
+        continuations.add(lineLevel);
+      }
+
+      var caseExtra = indentCaseBody ? caseDepths.length : 0;
+      if (indentCaseBody &&
+          isLabel &&
+          caseDepths.isNotEmpty &&
+          caseDepths.last == lineLevel) {
+        caseExtra--;
+      }
+      levels[i] = lineLevel + caseExtra + continuations.length;
 
       final delta = _bracketDelta(trimmed, inBlockComment: inBlockComment);
       inBlockComment = delta.inBlockComment;
       depth += delta.net;
       if (depth < 0) depth = 0;
+
+      final endsWithColon = delta.lastCodeChar == 0x3a /* : */;
+      // 式が基準の深さまで戻ったら継続を終える（行末 `:` で続く場合は維持）
+      if (!endsWithColon || isLabel) {
+        while (continuations.isNotEmpty && continuations.last >= depth) {
+          continuations.removeLast();
+        }
+      }
+      if (endsWithColon && isLabel) {
+        if (indentCaseBody &&
+            (caseDepths.isEmpty || caseDepths.last != lineLevel)) {
+          caseDepths.add(lineLevel);
+        }
+      } else if (endsWithColon && !_isAccessSpecifier(trimmed)) {
+        if (continuations.isEmpty || continuations.last != depth) {
+          continuations.add(depth);
+        }
+      }
     }
     return levels;
+  }
+
+  static final _caseLabelPattern = RegExp(r'^(case\b|default\s*:)');
+  static final _accessSpecifierPattern =
+      RegExp(r'^(public|private|protected)\s*:\s*$');
+
+  static bool _isCaseLabel(String trimmed) =>
+      _caseLabelPattern.hasMatch(trimmed);
+
+  static bool _isAccessSpecifier(String trimmed) =>
+      _accessSpecifierPattern.hasMatch(trimmed);
+
+  /// 行頭の `:`（三項の else・初期化子リスト）と三項の `?`。
+  /// `::` `?.` `??` `?[` `?..` は対象外。
+  static bool _startsWithContinuationOperator(String trimmed) {
+    if (trimmed.isEmpty) return false;
+    final c = trimmed.codeUnitAt(0);
+    final next = trimmed.length > 1 ? trimmed.codeUnitAt(1) : 0;
+    if (c == 0x3a /* : */) return next != 0x3a;
+    if (c == 0x3f /* ? */) {
+      return next != 0x2e /* . */ && next != 0x3f && next != 0x5b /* [ */;
+    }
+    return false;
   }
 
   static String _applyLevel(String line, int level, int indentSize) {
@@ -124,11 +208,13 @@ abstract final class CodingIndentAligner {
     return n;
   }
 
-  static ({int net, bool inBlockComment}) _bracketDelta(
+  /// [lastCodeChar] はコメント・空白を除いた行末の文字（無ければ 0）。
+  static ({int net, bool inBlockComment, int lastCodeChar}) _bracketDelta(
     String line, {
     required bool inBlockComment,
   }) {
     var depth = 0;
+    var lastCodeChar = 0;
     var i = 0;
     var block = inBlockComment;
     var inString = false;
@@ -164,6 +250,7 @@ abstract final class CodingIndentAligner {
             i++;
           }
           inString = false;
+          lastCodeChar = stringQuote;
           continue;
         }
         i++;
@@ -209,10 +296,12 @@ abstract final class CodingIndentAligner {
       } else if (c == 0x7d /* } */ || c == 0x5d /* ] */ || c == 0x29 /* ) */) {
         depth--;
       }
+      if (c != 0x20 && c != 0x09 && c != 0x0d) lastCodeChar = c;
       i++;
     }
 
-    return (net: depth, inBlockComment: block);
+    if (inString) lastCodeChar = stringQuote;
+    return (net: depth, inBlockComment: block, lastCodeChar: lastCodeChar);
   }
 
   static bool _isIdentChar(int c) {

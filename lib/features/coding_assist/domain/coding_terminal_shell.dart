@@ -28,4 +28,14 @@ abstract final class CodingTerminalShell {
     if (os == 'windows') return const [];
     return const ['-l'];
   }
+
+  /// WS 未選択時の初期 cwd。`$HOME`／`USERPROFILE`、無ければ一時ディレクトリ。
+  static String defaultWorkingDirectory({
+    Map<String, String>? environment,
+  }) {
+    final env = environment ?? Platform.environment;
+    final home = (env['HOME'] ?? env['USERPROFILE'])?.trim();
+    if (home != null && home.isNotEmpty) return home;
+    return Directory.systemTemp.path;
+  }
 }

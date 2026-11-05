@@ -19,6 +19,7 @@ import 'features/generative_ai/data/ai_debug_log_store.dart';
 import 'features/generative_ai/data/local_llm_client.dart';
 import 'features/generative_ai/data/local_llm_server_launcher.dart';
 import 'features/coding_assist/data/datasources/coding_assist_local_datasource.dart';
+import 'features/coding_assist/data/datasources/coding_custom_prompts_local_datasource.dart';
 import 'features/coding_assist/data/datasources/coding_ui_settings_local_datasource.dart';
 import 'features/coding_assist/data/repositories/coding_assist_repository_impl.dart';
 import 'features/coding_assist/domain/repositories/coding_assist_repository.dart';
@@ -93,6 +94,10 @@ Future<void> configureDependencies() async {
   getIt.registerLazySingleton(
     () => CodingUiSettingsLocalDataSource(preferences: getIt()),
   );
+  getIt.registerLazySingleton(
+    () => CodingCustomPromptsLocalDataSource(preferences: getIt()),
+  );
+  getIt<CodingCustomPromptsLocalDataSource>().loadAndBind();
   getIt.registerLazySingleton<CodingAssistRepository>(
     () => CodingAssistRepositoryImpl(localDataSource: getIt()),
   );

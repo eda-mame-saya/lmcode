@@ -252,6 +252,7 @@ class CodingDartLspPromptsBuilder implements CodeAutocompletePromptsBuilder {
     required this.absolutePath,
     required this.fullText,
     required this.onNotifierReady,
+    required this.editingValue,
     this.pathSuffix = '.dart',
   });
 
@@ -259,6 +260,9 @@ class CodingDartLspPromptsBuilder implements CodeAutocompletePromptsBuilder {
   final String absolutePath;
   final String pathSuffix;
   String fullText;
+
+  /// LSP 応答時点のエディタ状態。依頼時と入力位置が変わっていたら結果を捨てる。
+  final CodeLineEditingValue Function() editingValue;
 
   /// show() 直後の viewBuilder から notifier を受け取り、LSP 結果で更新する。
   final void Function(ValueNotifier<CodeAutocompleteEditingValue> notifier)
@@ -337,6 +341,14 @@ class CodingDartLspPromptsBuilder implements CodeAutocompletePromptsBuilder {
         character: character,
       );
       if (seq != _seq) return;
+      // re_editor の確定処理は「今のキャレット直前 input.length 文字」を置き換える。
+      // キャッシュ命中や Backspace で依頼後に入力が変わっていると、古い input で
+      // 置換されて文字が二重になりキャレットもずれるため、一致時だけ反映する。
+      final current = _isStillAt(
+        line: line,
+        character: character,
+        input: input,
+      );
 
       final prompts = <CodePrompt>[];
       for (final item in items) {
@@ -355,15 +367,15 @@ class CodingDartLspPromptsBuilder implements CodeAutocompletePromptsBuilder {
         }
       }
       if (prompts.isEmpty) {
-        awaitingFetch = false;
         lsp.cache.remove(key);
         lsp.emptyKeys.add(key);
+        if (!current) return;
+        awaitingFetch = false;
         // 開いているオーバーレイを、テキスト変更なしで閉じる
         _dismissOverlayWithoutEdit(input);
         return;
       }
 
-      awaitingFetch = false;
       lsp.emptyKeys.remove(key);
       final value = CodeAutocompleteEditingValue(
         input: input,
@@ -371,11 +383,43 @@ class CodingDartLspPromptsBuilder implements CodeAutocompletePromptsBuilder {
         index: 0,
       );
       lsp.cache[key] = value;
+      if (!current) return;
+      awaitingFetch = false;
       final notifier = _activeNotifier;
       if (notifier != null) {
         notifier.value = value;
       }
     });
+  }
+
+  bool _isStillAt({
+    required int line,
+    required int character,
+    required String input,
+  }) {
+    if (_cancelled) return false;
+    final value = editingValue();
+    final selection = value.selection;
+    if (!selection.isCollapsed) return false;
+    if (value.composing.isValid && !value.composing.isCollapsed) return false;
+    if (selection.extentIndex != line || selection.extentOffset != character) {
+      return false;
+    }
+    if (line < 0 || line >= value.codeLines.length) return false;
+    final parsed = _parsePrefix(value.codeLines[line].text, character);
+    return parsed != null && parsed.input == input;
+  }
+
+  bool _cancelled = false;
+
+  /// エディタから外したビルダーの遅延応答が、新しいオーバーレイを操作しないようにする。
+  void cancel() {
+    _cancelled = true;
+    _debounce?.cancel();
+    _debounce = null;
+    _seq++;
+    _activeNotifier = null;
+    _dismissOverlay = null;
   }
 
   /// re_editor の onSelected 経由で dismiss（入力内容は変えない）。

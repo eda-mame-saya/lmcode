@@ -46,6 +46,7 @@
 | `app_color_overrides_dark` | string (JSON) | ダーク配色の上書き（同上） |
 | `dart_sdk_path` | string | 空＝PATH から `dart` 探索。正本: S11 §4.6 |
 | `custom_llm_models_json` | string (JSON) | S11a 登録一覧 |
+| `coding_custom_prompts` | string (JSON) | S17 カスタムプロンプト上書き。`{ promptId: text }`。欠落／空文字＝組み込み既定。実装: `CodingCustomPromptsLocalDataSource` |
 
 ### 3.1 互換残置（本アプリでは主に使わない）
 
@@ -57,6 +58,7 @@
 
 | 日付 | 内容 |
 |------|------|
+| 2026-11-06 | `coding_custom_prompts`（S17）を追加 |
 | 2026-10-27 | `app_color_overrides_light`／`_dark`（個別色カスタム）を追加 |
 | 2026-10-27 | `app_theme_mode`（ライト／ダーク／システム）を追加 |
 | 2026-10-27 | lmcode 切り出し。コーディング用キーを正として整理 |

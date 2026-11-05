@@ -6,12 +6,14 @@ class _Toolbar extends StatelessWidget {
     required this.customModels,
     required this.onOpenFolder,
     required this.onOpenEngineSettings,
+    required this.onOpenCustomPrompts,
   });
 
   final CodingAssistState state;
   final List<CustomLlmModel> customModels;
   final VoidCallback onOpenFolder;
   final VoidCallback onOpenEngineSettings;
+  final VoidCallback onOpenCustomPrompts;
 
   @override
   Widget build(BuildContext context) {
@@ -143,6 +145,14 @@ class _Toolbar extends StatelessWidget {
                 ? null
                 : onOpenEngineSettings,
             icon: const Icon(Icons.tune),
+            visualDensity: VisualDensity.compact,
+          ),
+          IconButton(
+            tooltip: 'カスタムプロンプト',
+            onPressed: state.isGenerating || state.isLlmBusy
+                ? null
+                : onOpenCustomPrompts,
+            icon: const Icon(Icons.edit_note),
             visualDensity: VisualDensity.compact,
           ),
           ValueListenableBuilder<bool>(

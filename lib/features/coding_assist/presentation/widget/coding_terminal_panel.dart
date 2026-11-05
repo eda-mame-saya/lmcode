@@ -11,7 +11,7 @@ import '../../domain/coding_terminal_shell.dart';
 
 /// エディタ下部の折りたたみ式ターミナル（PTY + xterm）。
 ///
-/// 初期 cwd は [workingDirectory]（選択中ワークスペース）。
+/// 初期 cwd は [workingDirectory]（WS 選択時はそのルート、未選択時はホーム）。
 /// 折りたたみ時もシェルは維持する。
 class CodingTerminalPanel extends StatefulWidget {
   const CodingTerminalPanel({
@@ -181,36 +181,47 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
               height: CodingTerminalPanel.headerHeight,
               child: Row(
                 children: [
-                  IconButton(
-                    tooltip: widget.collapsed ? 'ターミナルを展開' : 'ターミナルを折りたたむ',
-                    onPressed: widget.onToggleCollapsed,
-                    icon: Icon(
-                      widget.collapsed
-                          ? Icons.keyboard_arrow_up
-                          : Icons.keyboard_arrow_down,
-                      size: 18,
-                    ),
-                    visualDensity: VisualDensity.compact,
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(
-                      minWidth: 32,
-                      minHeight: 32,
-                    ),
-                  ),
-                  const Text(
-                    'ターミナル',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(width: 8),
                   Expanded(
-                    child: Text(
-                      widget.workingDirectory,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: scheme.onSurfaceVariant,
-                        fontFamily: 'monospace',
+                    child: Tooltip(
+                      message: widget.collapsed
+                          ? 'ターミナルを展開'
+                          : 'ターミナルを折りたたむ',
+                      child: InkWell(
+                        onTap: widget.onToggleCollapsed,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 32,
+                              height: 32,
+                              child: Icon(
+                                widget.collapsed
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                                size: 18,
+                              ),
+                            ),
+                            const Text(
+                              'ターミナル',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                widget.workingDirectory,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: scheme.onSurfaceVariant,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -266,7 +277,10 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
                           ),
                           padding: const EdgeInsets.all(6),
                           autofocus: false,
-                          hardwareKeyboardOnly: true,
+                          // false: TextInputClient 経由で IME（日本語など）を受け付ける。
+                          // true だとハードキーのみになり変換入力が効かない。
+                          hardwareKeyboardOnly: false,
+                          keyboardType: TextInputType.text,
                           backgroundOpacity: 1,
                         ),
                 ),

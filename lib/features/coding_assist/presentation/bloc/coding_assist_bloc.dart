@@ -3207,12 +3207,14 @@ $avoid$guidance
     required String emptyMessage,
     String requestText = '',
     String? deliverableInstruction,
-    String deliverableSystemSuffix = codingDeliverableSystemSuffix,
+    String? deliverableSystemSuffix,
     List<CodingPromptAction> fixedPrompts = const [],
     Set<String> restoreReadPaths = const {},
     List<({String path, String body})> extraReads = const [],
     bool forbidReadFile = false,
   }) async {
+    final effectiveDeliverableSuffix =
+        deliverableSystemSuffix ?? codingDeliverableSystemSuffix;
     final restored = deliverableInstruction == null
         ? const <({String path, String body})>[]
         : CodingApiContextBuilder.restoredReadBodies(
@@ -3255,7 +3257,7 @@ $avoid$guidance
           );
     final systemForCall = deliverableInstruction == null
         ? systemPrompt
-        : '$systemPrompt\n\n$deliverableSystemSuffix';
+        : '$systemPrompt\n\n$effectiveDeliverableSuffix';
     final used = deliverableMessages == null
         ? _estimateUsedTokens(
             messages: messages,

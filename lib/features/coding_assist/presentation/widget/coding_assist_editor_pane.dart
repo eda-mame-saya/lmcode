@@ -474,10 +474,6 @@ class _EditorPaneState extends State<_EditorPane> {
 
   @override
   Widget build(BuildContext context) {
-    if (state.workspaceRoot == null) {
-      return const Center(child: Text('左の「フォルダを開く」からプロジェクトフォルダを選択'));
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
         final maxTerminal = (constraints.maxHeight * 0.55).clamp(
@@ -488,12 +484,20 @@ class _EditorPaneState extends State<_EditorPane> {
           CodingTerminalPanel.heightMin,
           maxTerminal,
         );
+        final terminalCwd = state.workspaceRoot ??
+            CodingTerminalShell.defaultWorkingDirectory();
 
         return Column(
           children: [
-            Expanded(child: _buildEditorBody(context)),
+            Expanded(
+              child: state.workspaceRoot == null
+                  ? const Center(
+                      child: Text('左の「フォルダを開く」からプロジェクトフォルダを選択'),
+                    )
+                  : _buildEditorBody(context),
+            ),
             CodingTerminalPanel(
-              workingDirectory: state.workspaceRoot!,
+              workingDirectory: terminalCwd,
               collapsed: _terminalCollapsed,
               height: terminalH,
               onToggleCollapsed: () =>
@@ -1031,6 +1035,7 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
   }
 
   void _refreshLspPrompts() {
+    _lspPrompts?.cancel();
     final path = widget.activeTabPath;
     final root = widget.workspaceRoot;
     if (path == null || root == null) {
@@ -1056,6 +1061,7 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
       pathSuffix: suffix,
       fullText: widget.controller.text,
       onNotifierReady: (_) {},
+      editingValue: () => widget.controller.value,
     );
   }
 
@@ -1196,6 +1202,7 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
 
   @override
   void dispose() {
+    _lspPrompts?.cancel();
     _dismissDefinitionBalloon();
     _scrollController.verticalScroller.dispose();
     _scrollController.horizontalScroller.dispose();

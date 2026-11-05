@@ -42,10 +42,15 @@ class CodingTabEditors {
 
   CodeLineEditingController? peek(String path) => _byPath[path];
 
+  /// [pushContent] が false のときは既存コントローラの本文を書き換えない。
+  /// BLoC の本文は手入力より遅れて届くため、タブ切替やエラー表示など
+  /// 本文と無関係な通知で上書きすると、入力中の文字が巻き戻り、
+  /// IME の未確定文字が二重に確定し、カーソルが先頭へ飛ぶ。
   void sync({
     required String? activePath,
     required List<({String path, String content})> tabs,
     required CodingTabEditorReplace replaceText,
+    required bool pushContent,
   }) {
     final open = <String, String>{
       for (final tab in tabs) tab.path: tab.content,
@@ -56,13 +61,13 @@ class CodingTabEditors {
     for (final path in closed) {
       _retiredControllers.add(_byPath.remove(path)!);
     }
-    for (final entry in open.entries) {
-      final existing = _byPath[entry.key];
-      if (existing != null && existing.text != entry.value) {
-        // IME 変換中や連打入力中に、遅れて届いた BLoC 本文でコントローラを
-        // 上書きすると、変換が壊れ insert っぽい挙動やスペース欠落になる。
-        if (existing.isComposing) continue;
-        replaceText(existing, entry.value);
+    if (pushContent) {
+      for (final entry in open.entries) {
+        final existing = _byPath[entry.key];
+        if (existing != null && existing.text != entry.value) {
+          if (existing.isComposing) continue;
+          replaceText(existing, entry.value);
+        }
       }
     }
     if (activePath == null || !open.containsKey(activePath)) {
