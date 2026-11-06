@@ -298,6 +298,7 @@ abstract final class CodingWorkspaceScan {
     String rootPath, {
     int? listedFileLimit,
     int? treeLineLimit,
+    CodingWorkspaceKind? forceKind,
   }) async {
     final fileCap = listedFileLimit ?? maxListedFiles;
     final treeCap = treeLineLimit ?? maxTreeLines;
@@ -385,10 +386,24 @@ abstract final class CodingWorkspaceScan {
     if (truncated) {
       tree.writeln('\n…（ファイル数上限のため省略）');
     }
-    final kind = CodingWorkspaceKindDetect.fromLists(
-      relativeFiles: files,
-      relativeDirectories: dirs,
-    );
+    // 「小説として開く」で書いた `.lmcode-novel` があれば種別を小説に固定。
+    // （マーカーはドットファイルのため索引に載らないことがある）
+    final CodingWorkspaceKind kind;
+    if (forceKind != null) {
+      kind = forceKind;
+    } else {
+      final marker = File(
+        p.join(root.path, CodingWorkspaceKindDetect.novelMarkerFileName),
+      );
+      if (await marker.exists()) {
+        kind = CodingWorkspaceKind.novel;
+      } else {
+        kind = CodingWorkspaceKindDetect.fromLists(
+          relativeFiles: files,
+          relativeDirectories: dirs,
+        );
+      }
+    }
     return CodingWorkspaceIndex(
       rootPath: root.path,
       rootLabel: label,

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../../../api_settings/domain/entities/local_llm_connection_settings.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
+import '../../domain/coding_novel_settings.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
@@ -23,6 +24,8 @@ final class CodingAssistState extends Equatable {
     this.autoSleepArmed = false,
     this.autoSleepDeadline,
     this.indentSize = 4,
+    this.novelSettings = CodingNovelSettings.defaults,
+    this.novelKeywordsContent,
     this.promptFavorites = const [],
     this.appliedPromptActions = const [],
     this.recentWorkspaces = const [],
@@ -77,6 +80,12 @@ final class CodingAssistState extends Equatable {
 
   /// インデント空白幅（2 または 4。既定 4）。
   final int indentSize;
+
+  /// 小説執筆モードの改行インデント等。
+  final CodingNovelSettings novelSettings;
+
+  /// 小説キーワード `keywords.md` のディスク／確保済み本文。開いているタブがあればそちらを優先表示。
+  final String? novelKeywordsContent;
 
   /// プロンプト補助のお気に入り（最大2・登録順。＋隣に短縮ボタン表示）。
   final List<CodingPromptAction> promptFavorites;
@@ -197,6 +206,9 @@ final class CodingAssistState extends Equatable {
     DateTime? autoSleepDeadline,
     bool clearAutoSleepDeadline = false,
     int? indentSize,
+    CodingNovelSettings? novelSettings,
+    String? novelKeywordsContent,
+    bool clearNovelKeywordsContent = false,
     List<CodingPromptAction>? promptFavorites,
     List<CodingPromptAction>? appliedPromptActions,
     bool clearAppliedPromptActions = false,
@@ -260,6 +272,10 @@ final class CodingAssistState extends Equatable {
           ? null
           : (autoSleepDeadline ?? this.autoSleepDeadline),
       indentSize: indentSize ?? this.indentSize,
+      novelSettings: novelSettings ?? this.novelSettings,
+      novelKeywordsContent: clearNovelKeywordsContent || clearWorkspace
+          ? null
+          : (novelKeywordsContent ?? this.novelKeywordsContent),
       promptFavorites: promptFavorites ?? this.promptFavorites,
       appliedPromptActions: clearAppliedPromptActions
           ? const []
@@ -344,6 +360,8 @@ final class CodingAssistState extends Equatable {
     autoSleepArmed,
     autoSleepDeadline,
     indentSize,
+    novelSettings,
+    novelKeywordsContent,
     promptFavorites,
     appliedPromptActions,
     recentWorkspaces,
@@ -351,6 +369,7 @@ final class CodingAssistState extends Equatable {
     workspaceRoot,
     gitBranch,
     index?.rootPath,
+    index?.kind,
     index?.relativeFiles.length,
     index?.relativeDirectories.length,
     openTabs.map(

@@ -22,12 +22,18 @@ enum CodingWorkspaceKind {
   /// `pyproject.toml` / `requirements.txt` / `setup.py` / `Pipfile` がある。
   python,
 
+  /// 小説執筆（`.lmcode-novel` マーカー、または「小説ワークスペースとして開く」）。
+  novel,
+
   /// 上記以外。
   generic,
 }
 
 /// ルート検出とプロファイル別 system prompt（S16）。
 abstract final class CodingWorkspaceKindDetect {
+  /// 小説ワークスペースのルートマーカー（空ファイルでよい）。
+  static const novelMarkerFileName = '.lmcode-novel';
+
   static const _pythonRootMarkers = <String>{
     'pyproject.toml',
     'requirements.txt',
@@ -47,11 +53,14 @@ abstract final class CodingWorkspaceKindDetect {
   };
 
   /// 索引のパス一覧から判定。`pubspec.yaml` があれば Flutter 優先（`ios/` 同梱対策）。
-  /// 優先順: Flutter → Swift/Xcode → React → Android → Python → generic。
+  /// 優先順: novel（`.lmcode-novel`）→ Flutter → Swift/Xcode → React → Android → Python → generic。
   static CodingWorkspaceKind fromLists({
     required List<String> relativeFiles,
     required List<String> relativeDirectories,
   }) {
+    if (relativeFiles.contains(novelMarkerFileName)) {
+      return CodingWorkspaceKind.novel;
+    }
     if (relativeFiles.contains('pubspec.yaml')) {
       return CodingWorkspaceKind.flutter;
     }
@@ -130,11 +139,14 @@ abstract final class CodingWorkspaceKindDetect {
     var hasAndroidMarker = false;
     var hasRootBuildGradle = false;
     var hasRootKtJava = false;
+    var hasNovelMarker = false;
     try {
       await for (final entity in root.list(followLinks: false)) {
         final name = p.basename(entity.path);
         if (entity is File && name == 'pubspec.yaml') {
           hasPubspec = true;
+        } else if (entity is File && name == novelMarkerFileName) {
+          hasNovelMarker = true;
         } else if (entity is File && name == 'Package.swift') {
           hasSwiftMarker = true;
         } else if (entity is Directory &&
@@ -173,6 +185,8 @@ abstract final class CodingWorkspaceKindDetect {
     } catch (_) {
       return CodingWorkspaceKind.generic;
     }
+    // 小説マーカーは明示オープンの痕跡。他コード系より優先。
+    if (hasNovelMarker) return CodingWorkspaceKind.novel;
     if (hasPubspec) return CodingWorkspaceKind.flutter;
     if (hasSwiftMarker) return CodingWorkspaceKind.swiftXcode;
     if (hasReactConfig ||
@@ -187,6 +201,18 @@ abstract final class CodingWorkspaceKindDetect {
     return CodingWorkspaceKind.generic;
   }
 
+  /// 小説ワークスペースとして開くときにルートへマーカーを書く。
+  static Future<void> ensureNovelMarker(String rootPath) async {
+    final file = File(p.join(rootPath, novelMarkerFileName));
+    if (await file.exists()) return;
+    try {
+      await file.writeAsString(
+        '# LMCode novel workspace\n',
+        flush: true,
+      );
+    } catch (_) {}
+  }
+
   /// `package.json` 本文に react 依存の気配があるか（軽量ヒューリスティック）。
   static bool _packageJsonMentionsReact(String text) {
     // "react" / "react-dom" / "next" を依存キーとしてざっくり検出
@@ -199,6 +225,7 @@ abstract final class CodingWorkspaceKindDetect {
     CodingWorkspaceKind.react => 'React',
     CodingWorkspaceKind.android => 'Android (Java/Kotlin)',
     CodingWorkspaceKind.python => 'Python',
+    CodingWorkspaceKind.novel => '小説',
     CodingWorkspaceKind.generic => '汎用',
   };
 
@@ -228,6 +255,7 @@ Flutter の回帰テスト（Flutter ワークスペースで、Dart の振る�
         CodingWorkspaceKind.react => CodingCustomPromptId.systemReact,
         CodingWorkspaceKind.android => CodingCustomPromptId.systemAndroid,
         CodingWorkspaceKind.python => CodingCustomPromptId.systemPython,
+        CodingWorkspaceKind.novel => CodingCustomPromptId.systemNovel,
         CodingWorkspaceKind.generic => CodingCustomPromptId.systemGeneric,
       };
 
@@ -342,6 +370,13 @@ $pathNotes
       updateFile: 'src/app/main.py',
       layoutHint: '既存の src／tests の並び。lib/ の Dart 配置は使わない',
       bareName: 'main.py',
+      usesFlutterTests: false,
+    ),
+    CodingWorkspaceKind.novel => const CodingWorkspacePathSamples(
+      addFile: 'chapters/01.txt',
+      updateFile: 'chapters/01.txt',
+      layoutHint: '既存の章立て・フォルダ並び。lib/ は使わない',
+      bareName: '01.txt',
       usesFlutterTests: false,
     ),
     CodingWorkspaceKind.generic => const CodingWorkspacePathSamples(
@@ -463,6 +498,20 @@ $pathNotes
                 '- ルートの README.md / pyproject.toml / requirements.txt / setup.py も対象。無いと決めつけない\n'
                 '- 優先候補: pyproject.toml、requirements.txt、src/**、tests/**、*.py\n'
                 '- __pycache__ / .venv は除外済みのことが多い',
+          ),
+        CodingWorkspaceKind.novel => _promptBody(
+            roleLine:
+                'あなたは小説執筆向けのローカル・アシスタントです。'
+                '原稿は主に .txt。ルビは小説家になろう記法（|漢字《かんじ》）を使う。',
+            listDirExample: 'chapters',
+            readFileExample: 'chapters/01.txt',
+            grepPathExample: 'chapters',
+            updateFileExample: 'chapters/01.txt',
+            pathNotes:
+                '- ルートの README.md / .lmcode-novel も対象。無いと決めつけない\n'
+                '- 優先候補: *.txt、chapters/**、notes/**\n'
+                '- プログラムの lib/ やテストは対象外。地の文とセリフの空行・字下げは既存原稿に合わせる\n'
+                '- 関数単位の Patch 規約は文書向けに緩めてよいが、Begin/End Patch 形式は守る',
           ),
         CodingWorkspaceKind.generic => _promptBody(
             roleLine: 'あなたはローカル・コーディングアシスタントです。',

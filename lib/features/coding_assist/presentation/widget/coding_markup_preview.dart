@@ -4,33 +4,47 @@ import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart
 import 'package:path/path.dart' as p;
 
 import '../../../../theme.dart';
+import '../../domain/coding_novel_ruby.dart';
+import '../../domain/coding_workspace_kind.dart';
 import 'coding_markdown.dart';
 
-/// Markdown／マークアップ（HTML 系）のプレビュー種別。
+/// Markdown／マークアップ／小説のプレビュー種別。
 enum CodingPreviewKind {
   markdown,
   markup,
+  novel,
 }
 
-/// エディタ用 Markdown／マークアップ プレビュー（読み取り専用）。
+/// エディタ用 Markdown／マークアップ／小説 プレビュー（読み取り専用）。
 abstract final class CodingMarkupPreview {
   /// プレビュー対象なら種別、でなければ null。
-  static CodingPreviewKind? kindForPath(String? relativePath) {
+  ///
+  /// `.txt` は小説ワークスペースのときだけビュー表示（ルビ確認用）。
+  static CodingPreviewKind? kindForPath(
+    String? relativePath, {
+    CodingWorkspaceKind? workspaceKind,
+  }) {
     if (relativePath == null || relativePath.isEmpty) return null;
     final ext = p.extension(relativePath).toLowerCase().replaceFirst('.', '');
     return switch (ext) {
       'md' || 'markdown' || 'mdx' => CodingPreviewKind.markdown,
       'html' || 'htm' || 'xhtml' || 'svg' => CodingPreviewKind.markup,
+      'txt' when workspaceKind == CodingWorkspaceKind.novel =>
+        CodingPreviewKind.novel,
       _ => null,
     };
   }
 
-  static bool isPreviewablePath(String? relativePath) =>
-      kindForPath(relativePath) != null;
+  static bool isPreviewablePath(
+    String? relativePath, {
+    CodingWorkspaceKind? workspaceKind,
+  }) =>
+      kindForPath(relativePath, workspaceKind: workspaceKind) != null;
 
   static String buttonLabel(CodingPreviewKind kind) => switch (kind) {
         CodingPreviewKind.markdown => 'Markdown',
         CodingPreviewKind.markup => 'マークアップ',
+        CodingPreviewKind.novel => '小説',
       };
 }
 
@@ -77,6 +91,10 @@ class CodingMarkupPreviewPane extends StatelessWidget {
                   foreground: fg,
                 ),
               CodingPreviewKind.markup => _HtmlPreview(
+                  data: content,
+                  foreground: fg,
+                ),
+              CodingPreviewKind.novel => _NovelPreview(
                   data: content,
                   foreground: fg,
                 ),
@@ -207,6 +225,73 @@ class _HtmlPreview extends StatelessWidget {
             height: 1.5,
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// 小説ビュー。なろう記法のルビを振り仮名として表示する。
+class _NovelPreview extends StatelessWidget {
+  const _NovelPreview({
+    required this.data,
+    required this.foreground,
+  });
+
+  final String data;
+  final Color foreground;
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = data.isEmpty ? const ['（空のファイル）'] : data.split('\n');
+    final base = TextStyle(
+      color: foreground,
+      fontSize: 16,
+      height: 1.9,
+    );
+    final rubyStyle = TextStyle(
+      color: foreground.withValues(alpha: 0.85),
+      fontSize: 10,
+      height: 1.0,
+    );
+
+    return SelectionArea(
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(28, 20, 28, 32),
+        itemCount: lines.length,
+        itemBuilder: (context, index) {
+          final line = lines[index];
+          if (line.isEmpty) {
+            return const SizedBox(height: 16);
+          }
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 2),
+            child: Text.rich(
+              TextSpan(
+                children: [
+                  for (final span in CodingNovelRuby.parse(line))
+                    switch (span) {
+                      CodingNovelPlainSpan(:final text) => TextSpan(
+                          text: text,
+                          style: base,
+                        ),
+                      CodingNovelRubySpan(:final baseString, :final ruby) =>
+                        WidgetSpan(
+                          alignment: PlaceholderAlignment.baseline,
+                          baseline: TextBaseline.alphabetic,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(ruby, style: rubyStyle),
+                              Text(baseString, style: base),
+                            ],
+                          ),
+                        ),
+                    },
+                ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

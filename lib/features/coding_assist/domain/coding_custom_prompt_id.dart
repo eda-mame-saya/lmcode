@@ -18,6 +18,9 @@ enum CodingCustomPromptId {
   /// 汎用 system。
   systemGeneric,
 
+  /// 小説執筆用 system。
+  systemNovel,
+
   /// 言語サーバ起動時のシンボル探索ツール説明。
   symbolTools,
 
@@ -82,6 +85,7 @@ enum CodingCustomPromptId {
         systemAndroid ||
         systemPython ||
         systemGeneric ||
+        systemNovel ||
         symbolTools ||
         flutterRegression =>
           CodingCustomPromptCategory.system,
@@ -112,6 +116,7 @@ enum CodingCustomPromptId {
         systemAndroid => 'System（Android）',
         systemPython => 'System（Python）',
         systemGeneric => 'System（汎用）',
+        systemNovel => 'System（小説）',
         symbolTools => 'シンボル探索ツール',
         flutterRegression => 'Flutter 回帰テスト規則',
         deliverable => '検査・再指示（未読許可）',
@@ -138,7 +143,8 @@ enum CodingCustomPromptId {
         systemReact ||
         systemAndroid ||
         systemPython ||
-        systemGeneric =>
+        systemGeneric ||
+        systemNovel =>
           'Agent の system 役割・ツール／Patch 形式。ワークスペース種別に応じて選ばれる。',
         symbolTools => '言語サーバ起動時だけ system に足すツール説明。',
         flutterRegression =>

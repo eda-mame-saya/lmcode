@@ -3,9 +3,11 @@ import 'package:equatable/equatable.dart';
 import '../../../api_settings/domain/entities/custom_llm_model.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
+import '../../domain/coding_novel_settings.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
+import '../../domain/coding_workspace_kind.dart';
 import '../../domain/entities/coding_assist_entities.dart';
 
 sealed class CodingAssistEvent extends Equatable {
@@ -20,11 +22,17 @@ final class CodingAssistStarted extends CodingAssistEvent {
 }
 
 final class CodingAssistOpenWorkspaceRequested extends CodingAssistEvent {
-  const CodingAssistOpenWorkspaceRequested(this.rootPath);
+  const CodingAssistOpenWorkspaceRequested(
+    this.rootPath, {
+    this.forceKind,
+  });
   final String rootPath;
 
+  /// 指定時は自動判定を上書き（小説ワークスペースとして開く等）。
+  final CodingWorkspaceKind? forceKind;
+
   @override
-  List<Object?> get props => [rootPath];
+  List<Object?> get props => [rootPath, forceKind];
 }
 
 final class CodingAssistOpenFileRequested extends CodingAssistEvent {
@@ -354,6 +362,25 @@ final class CodingAssistIndentSizeChanged extends CodingAssistEvent {
 
   @override
   List<Object?> get props => [indentSize];
+}
+
+/// 小説執筆の改行インデント等。
+final class CodingAssistNovelSettingsChanged extends CodingAssistEvent {
+  const CodingAssistNovelSettingsChanged(this.settings);
+  final CodingNovelSettings settings;
+
+  @override
+  List<Object?> get props => [
+        settings.indentCount,
+        settings.indentSpace,
+        settings.indentDialogue,
+        settings.dialogueDelimiters,
+      ];
+}
+
+/// 小説キーワード `keywords.md` をディスクから再読込（無ければ作成）。
+final class CodingAssistNovelKeywordsReloadRequested extends CodingAssistEvent {
+  const CodingAssistNovelKeywordsReloadRequested();
 }
 
 /// プロンプト補助のお気に入り登録／解除（最大2）。

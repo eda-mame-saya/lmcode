@@ -69,6 +69,7 @@ abstract final class CodingIndentAligner {
       'md' ||
       'markdown' ||
       'mdx' ||
+      'txt' ||
       'gitignore' ||
       'env' =>
         false,

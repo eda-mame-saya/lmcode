@@ -41,6 +41,11 @@ abstract final class CodingCustomPromptDefaults {
           CodingWorkspaceKind.generic,
           applyCustom: false,
         );
+      case CodingCustomPromptId.systemNovel:
+        return CodingWorkspaceKindDetect.systemPrompt(
+          CodingWorkspaceKind.novel,
+          applyCustom: false,
+        );
       case CodingCustomPromptId.symbolTools:
         return CodingWorkspaceKindDetect.symbolToolsFor(
           kind,
@@ -147,6 +152,7 @@ abstract final class CodingCustomPromptDefaults {
           CodingCustomPromptId.systemAndroid ||
           CodingCustomPromptId.systemPython ||
           CodingCustomPromptId.systemGeneric ||
+          CodingCustomPromptId.systemNovel ||
           CodingCustomPromptId.symbolTools ||
           CodingCustomPromptId.flutterRegression ||
           CodingCustomPromptId.deliverable ||

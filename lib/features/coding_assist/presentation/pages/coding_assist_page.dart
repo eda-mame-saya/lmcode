@@ -34,12 +34,17 @@ import '../../domain/coding_folder_expansion.dart';
 import '../../domain/coding_user_history_view.dart';
 import '../../domain/coding_git.dart';
 import '../../domain/coding_indent_aligner.dart';
+import '../../domain/coding_novel_formatter.dart';
+import '../../domain/coding_novel_keywords.dart';
+import '../../domain/coding_novel_ruby.dart';
+import '../../domain/coding_novel_settings.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_task_evaluation.dart';
 import '../../domain/coding_terminal_shell.dart';
 import '../../domain/coding_ui_font_sizes.dart';
 import '../../domain/coding_unsaved_editor.dart';
+import '../../domain/coding_workspace_kind.dart';
 import '../../domain/coding_workspace_search.dart';
 import '../../domain/entities/coding_assist_entities.dart';
 import '../bloc/coding_assist_bloc.dart';
@@ -68,6 +73,7 @@ part '../widget/coding_assist_patch_card.dart';
 part '../widget/coding_assist_prompt_actions.dart';
 part '../widget/coding_assist_status_bar.dart';
 part '../widget/coding_assist_toolbar.dart';
+part '../widget/coding_novel_keywords_pane.dart';
 
 class _AlignIndentIntent extends Intent {
   const _AlignIndentIntent();
@@ -187,6 +193,10 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
   static const _agentWidthMax = 720.0;
   static const _agentWidthDefault = 360.0;
   static const _agentCollapsedWidth = 20.0;
+  static const _keywordsWidthMin = 200.0;
+  static const _keywordsWidthMax = 420.0;
+  static const _keywordsWidthDefault = 260.0;
+  static const _keywordsCollapsedWidth = 20.0;
 
   final _draftController = TextEditingController();
   late final CodingTabEditors _tabs = CodingTabEditors(
@@ -206,9 +216,11 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
   List<CustomLlmModel> _customModels = const [];
   bool _applyingEditorText = false;
   bool _agentCollapsed = false;
+  bool _keywordsCollapsed = false;
   bool _leftMenuCollapsed = false;
   bool _minimapCollapsed = false;
   double _agentWidth = _agentWidthDefault;
+  double _keywordsWidth = _keywordsWidthDefault;
   bool _hasEditorSelection = false;
   int _boundDraftEpoch = 0;
   int _boundEditorBufferEpoch = 0;
@@ -266,19 +278,36 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
     final state = context.read<CodingAssistBloc>().state;
     final sel = controller.selection;
     final text = controller.text;
-    final next = sel.isCollapsed
-        ? CodingIndentAligner.align(
-            text,
-            indentSize: state.indentSize,
-            relativePath: path,
-          )
-        : CodingIndentAligner.align(
-            text,
-            indentSize: state.indentSize,
-            relativePath: path,
-            startLineIndex: sel.startIndex,
-            endLineIndex: sel.endIndex,
-          );
+    final novelTxt = state.index?.kind == CodingWorkspaceKind.novel &&
+        p.extension(path).toLowerCase() == '.txt';
+    final String next;
+    if (novelTxt) {
+      next = sel.isCollapsed
+          ? CodingNovelFormatter.format(
+              text,
+              settings: state.novelSettings,
+            )
+          : CodingNovelFormatter.format(
+              text,
+              settings: state.novelSettings,
+              startLineIndex: sel.startIndex,
+              endLineIndex: sel.endIndex,
+            );
+    } else {
+      next = sel.isCollapsed
+          ? CodingIndentAligner.align(
+              text,
+              indentSize: state.indentSize,
+              relativePath: path,
+            )
+          : CodingIndentAligner.align(
+              text,
+              indentSize: state.indentSize,
+              relativePath: path,
+              startLineIndex: sel.startIndex,
+              endLineIndex: sel.endIndex,
+            );
+    }
     if (next == text) return;
     _applyingEditorText = true;
     controller.text = next;
@@ -705,6 +734,19 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
     );
   }
 
+  Future<void> _pickNovelFolder(BuildContext context) async {
+    final path = await FilePicker.getDirectoryPath(
+      dialogTitle: '小説ワークスペースのフォルダを選択',
+    );
+    if (path == null || !context.mounted) return;
+    context.read<CodingAssistBloc>().add(
+      CodingAssistOpenWorkspaceRequested(
+        path,
+        forceKind: CodingWorkspaceKind.novel,
+      ),
+    );
+  }
+
   Future<void> _createFlutterProject(BuildContext context) async {
     final path = await showCodingFlutterCreateDialog(context);
     if (path == null || !context.mounted) return;
@@ -825,6 +867,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                       state: state,
                       customModels: _customModels,
                       onOpenFolder: () => _pickFolder(context),
+                      onOpenNovelFolder: () => _pickNovelFolder(context),
                       onOpenEngineSettings: () => _openEngineSettings(context),
                       onOpenCustomPrompts: () => _openCustomPrompts(context),
                     ),
@@ -840,6 +883,10 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                             )
                           : LayoutBuilder(
                               builder: (context, constraints) {
+                                final showKeywords =
+                                    CodingNovelKeywords.paneVisible(
+                                  state.index?.kind,
+                                );
                                 final maxAgent = (_agentWidthMax).clamp(
                                   _agentWidthMin,
                                   constraints.maxWidth * 0.55,
@@ -850,6 +897,30 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                                         _agentWidthMin,
                                         maxAgent,
                                       );
+                                final maxKeywords = (_keywordsWidthMax).clamp(
+                                  _keywordsWidthMin,
+                                  constraints.maxWidth * 0.4,
+                                );
+                                final keywordsW = !showKeywords
+                                    ? 0.0
+                                    : (_keywordsCollapsed
+                                        ? _keywordsCollapsedWidth
+                                        : _keywordsWidth.clamp(
+                                            _keywordsWidthMin,
+                                            maxKeywords,
+                                          ));
+                                final keywordsContent =
+                                    state.openTabs
+                                        .where(
+                                          (t) =>
+                                              CodingNovelKeywords.isKeywordsPath(
+                                            t.relativePath,
+                                          ),
+                                        )
+                                        .map((t) => t.content)
+                                        .firstOrNull ??
+                                    state.novelKeywordsContent ??
+                                    '';
                                 return Row(
                                   children: [
                                     SizedBox(
@@ -875,6 +946,8 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                                                   ),
                                               onOpenFolder: () =>
                                                   _pickFolder(context),
+                                              onOpenNovelFolder: () =>
+                                                  _pickNovelFolder(context),
                                               onCreateFlutterProject: () =>
                                                   _createFlutterProject(context),
                                               onCollapse: () => setState(
@@ -927,6 +1000,52 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
                                         },
                                       ),
                                     ),
+                                    if (showKeywords) ...[
+                                      if (!_keywordsCollapsed)
+                                        _AgentResizeHandle(
+                                          onDrag: (dx) {
+                                            setState(() {
+                                              _keywordsWidth =
+                                                  (_keywordsWidth - dx).clamp(
+                                                _keywordsWidthMin,
+                                                maxKeywords,
+                                              );
+                                            });
+                                          },
+                                        )
+                                      else
+                                        const VerticalDivider(width: 1),
+                                      SizedBox(
+                                        width: keywordsW,
+                                        child: _keywordsCollapsed
+                                            ? _NovelKeywordsCollapsedStrip(
+                                                onExpand: () => setState(
+                                                  () => _keywordsCollapsed =
+                                                      false,
+                                                ),
+                                              )
+                                            : _NovelKeywordsPane(
+                                                content: keywordsContent,
+                                                onCollapse: () => setState(
+                                                  () =>
+                                                      _keywordsCollapsed = true,
+                                                ),
+                                                onOpenFile: () => context
+                                                    .read<CodingAssistBloc>()
+                                                    .add(
+                                                      const CodingAssistOpenFileRequested(
+                                                        CodingNovelKeywords
+                                                            .relativePath,
+                                                      ),
+                                                    ),
+                                                onRefresh: () => context
+                                                    .read<CodingAssistBloc>()
+                                                    .add(
+                                                      const CodingAssistNovelKeywordsReloadRequested(),
+                                                    ),
+                                              ),
+                                      ),
+                                    ],
                                     if (!_agentCollapsed)
                                       _AgentResizeHandle(
                                         onDrag: (dx) {

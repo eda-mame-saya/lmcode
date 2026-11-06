@@ -12,7 +12,8 @@ const List<({String keys, String description})> codingAssistShortcutHelp = [
   (keys: '⌘/ または Ctrl+/', description: '行コメントの切替（拡張子に応じた記号）'),
   (
     keys: '⌘⌥L または Ctrl+Alt+L',
-    description: 'インデントを付け直す（Dart等は括弧深さ、空白幅2/4。選択範囲または全体）',
+    description:
+        '整形。コードはインデント整列。小説WSの.txtは地の文とセリフのあいだに空行＋字下げ揃え',
   ),
   (keys: '⌘⇧F または Ctrl+⇧F', description: 'フォルダ内文言検索（選択中ならその語で検索まで実行）'),
   (

@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
+import '../../domain/coding_novel_settings.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
 
@@ -22,6 +23,7 @@ class CodingUiSettingsLocalDataSource {
   static const _prefAutoSleepAfterMinutes =
       'coding_ui_auto_sleep_after_minutes';
   static const _prefHarness = 'coding_ui_harness';
+  static const _prefNovel = 'coding_ui_novel';
 
   /// インデント空白の既定（4）。
   static const defaultIndentSize = 4;
@@ -118,6 +120,30 @@ class CodingUiSettingsLocalDataSource {
     await _preferences.setStringList(
       _prefPromptFavorites,
       next.map((e) => e.id).toList(growable: false),
+    );
+  }
+
+  CodingNovelSettings loadNovelSettings() {
+    final raw = _preferences.getString(_prefNovel);
+    if (raw == null || raw.isEmpty) return CodingNovelSettings.defaults;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map<String, dynamic>) {
+        return CodingNovelSettings.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return CodingNovelSettings.fromJson(
+          Map<String, dynamic>.from(decoded),
+        );
+      }
+    } catch (_) {}
+    return CodingNovelSettings.defaults;
+  }
+
+  Future<void> saveNovelSettings(CodingNovelSettings settings) async {
+    await _preferences.setString(
+      _prefNovel,
+      jsonEncode(settings.toJson()),
     );
   }
 }

@@ -38,6 +38,7 @@ import '../../domain/coding_text_file.dart';
 import '../../domain/coding_untitled_file.dart';
 import '../../domain/coding_folder_expansion.dart';
 import '../../domain/coding_user_history_view.dart';
+import '../../domain/coding_novel_keywords.dart';
 import '../../domain/coding_workspace_kind.dart';
 import '../../domain/coding_workspace_scan.dart';
 import '../../domain/entities/coding_assist_entities.dart';
@@ -106,6 +107,8 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistAutoSleepCancelled>(_onAutoSleepCancelled);
     on<CodingAssistAutoSleepDeadlineReached>(_onAutoSleepDeadlineReached);
     on<CodingAssistIndentSizeChanged>(_onIndentSizeChanged);
+    on<CodingAssistNovelSettingsChanged>(_onNovelSettingsChanged);
+    on<CodingAssistNovelKeywordsReloadRequested>(_onNovelKeywordsReload);
     on<CodingAssistPromptFavoriteToggled>(_onPromptFavoriteToggled);
     on<CodingAssistPromptActionToggled>(_onPromptActionToggled);
     on<CodingAssistCompactContextRequested>(_onCompactContext);
@@ -485,11 +488,15 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     return '${result.substring(0, cap)}\n…';
   }
 
-  Future<CodingWorkspaceIndex> _scanWorkspace(String root) {
+  Future<CodingWorkspaceIndex> _scanWorkspace(
+    String root, {
+    CodingWorkspaceKind? forceKind,
+  }) {
     return CodingWorkspaceScan.scan(
       root,
       listedFileLimit: state.harness.maxListedFiles,
       treeLineLimit: state.harness.maxTreeLines,
+      forceKind: forceKind,
     );
   }
 
@@ -539,6 +546,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     final harness = _uiSettingsLocalDataSource.loadHarness();
     final autoSleep = _uiSettingsLocalDataSource.loadAutoSleepSettings();
     final indentSize = _uiSettingsLocalDataSource.loadIndentSize();
+    final novelSettings = _uiSettingsLocalDataSource.loadNovelSettings();
     final promptFavorites = _uiSettingsLocalDataSource.loadPromptFavorites();
     try {
       final settings = await _getConnectionSettings();
@@ -575,6 +583,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         harness: harness,
         autoSleepSettings: autoSleep,
         indentSize: indentSize,
+        novelSettings: novelSettings,
         promptFavorites: promptFavorites,
         recentWorkspaces: recent,
         usedTokens: _estimateUsedTokens(
@@ -879,6 +888,60 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     }
   }
 
+  Future<void> _onNovelSettingsChanged(
+    CodingAssistNovelSettingsChanged event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    final next = event.settings.copyWith();
+    if (next == state.novelSettings) return;
+    emit(state.copyWith(novelSettings: next));
+    try {
+      await _uiSettingsLocalDataSource.saveNovelSettings(next);
+    } catch (e) {
+      emit(state.copyWith(errorMessage: '小説設定の保存に失敗: $e'));
+    }
+  }
+
+  Future<void> _onNovelKeywordsReload(
+    CodingAssistNovelKeywordsReloadRequested event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    final root = state.workspaceRoot?.trim();
+    if (root == null || root.isEmpty) return;
+    if (state.index?.kind != CodingWorkspaceKind.novel) return;
+    try {
+      final text = await CodingNovelKeywords.ensureFile(root);
+      final index = await _scanWorkspace(
+        root,
+        forceKind: CodingWorkspaceKind.novel,
+      );
+      // 開いているタブがあるときはタブ本文をディスクと揃える
+      final path = CodingNovelKeywords.relativePath;
+      final tabs = [
+        for (final tab in state.openTabs)
+          if (tab.relativePath == path)
+            CodingOpenTab(
+              relativePath: path,
+              content: text,
+              dirty: false,
+            )
+          else
+            tab,
+      ];
+      emit(
+        state.copyWith(
+          novelKeywordsContent: text,
+          index: index,
+          openTabs: tabs,
+          bumpEditorBufferEpoch: tabs.any((t) => t.relativePath == path),
+          clearError: true,
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'キーワードの読込に失敗: $e'));
+    }
+  }
+
   Future<void> _onPromptFavoriteToggled(
     CodingAssistPromptFavoriteToggled event,
     Emitter<CodingAssistState> emit,
@@ -938,7 +1001,16 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     _resetFlutterVerifyCycle();
     emit(state.copyWith(workspaceStatusMessage: '索引を作成中…', clearError: true));
     try {
-      final index = await _scanWorkspace(root);
+      if (event.forceKind == CodingWorkspaceKind.novel) {
+        await CodingWorkspaceKindDetect.ensureNovelMarker(root);
+      }
+      var index = await _scanWorkspace(root, forceKind: event.forceKind);
+      String? novelKeywords;
+      if (index.kind == CodingWorkspaceKind.novel) {
+        novelKeywords = await CodingNovelKeywords.ensureFile(root);
+        // 新規作成した keywords.md を索引に載せる
+        index = await _scanWorkspace(root, forceKind: CodingWorkspaceKind.novel);
+      }
       final branch = await CodingGit.currentBranch(root);
       await _repository.rememberWorkspace(root);
       final recent = await _repository.listRecentWorkspaces();
@@ -958,6 +1030,8 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           index: index,
           openTabs: const [],
           clearActiveTab: true,
+          novelKeywordsContent: novelKeywords,
+          clearNovelKeywordsContent: novelKeywords == null,
           thread: thread,
           pendingPatches: const [],
           recentWorkspaces: recent,
@@ -978,7 +1052,9 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
             clearAttachedFolderStructures: true,
           ),
           workspaceStatusMessage:
-              '${index.rootLabel}（${index.relativeFiles.length} files）',
+              '${index.rootLabel}・'
+              '${CodingWorkspaceKindDetect.displayLabel(index.kind)}'
+              '（${index.relativeFiles.length} files）',
         ),
       );
     } catch (e) {
@@ -1094,7 +1170,16 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         else
           t,
     ];
-    emit(state.copyWith(openTabs: next));
+    emit(
+      state.copyWith(
+        openTabs: next,
+        novelKeywordsContent: CodingNovelKeywords.isKeywordsPath(
+              event.relativePath,
+            )
+            ? event.content
+            : null,
+      ),
+    );
   }
 
   Future<void> _onSaveTab(
@@ -1117,7 +1202,17 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           else
             t,
       ];
-      emit(state.copyWith(openTabs: next, workspaceStatusMessage: '保存しました'));
+      emit(
+        state.copyWith(
+          openTabs: next,
+          workspaceStatusMessage: '保存しました',
+          novelKeywordsContent: CodingNovelKeywords.isKeywordsPath(
+                tab.relativePath,
+              )
+              ? tab.content
+              : null,
+        ),
+      );
     } catch (e) {
       emit(state.copyWith(errorMessage: '保存失敗: $e'));
     }

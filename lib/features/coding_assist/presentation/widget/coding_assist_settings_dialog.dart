@@ -28,6 +28,7 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
           buildWhen: (p, c) =>
               p.uiFontSizes != c.uiFontSizes ||
               p.indentSize != c.indentSize ||
+              p.novelSettings != c.novelSettings ||
               p.harness != c.harness ||
               p.localLlm.codingThinkingEnabled !=
                   c.localLlm.codingThinkingEnabled ||
@@ -97,6 +98,157 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
                       ),
                     ],
                   ),
+                ),
+                const Divider(),
+                const _SettingsSectionTitle('小説執筆'),
+                Text(
+                  '小説ワークスペースの .txt で有効。⌘⌥L で地の文とセリフの空行・字下げを揃えます。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).hintColor,
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 220, child: Text('改行インデント文字数')),
+                      IconButton(
+                        tooltip: '減らす',
+                        onPressed: state.novelSettings.indentCount <=
+                                CodingNovelSettings.minIndentCount
+                            ? null
+                            : () => context.read<CodingAssistBloc>().add(
+                                  CodingAssistNovelSettingsChanged(
+                                    state.novelSettings.copyWith(
+                                      indentCount:
+                                          state.novelSettings.indentCount - 1,
+                                    ),
+                                  ),
+                                ),
+                        icon: const Icon(Icons.remove, size: 18),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      Text('${state.novelSettings.indentCount}'),
+                      IconButton(
+                        tooltip: '増やす',
+                        onPressed: state.novelSettings.indentCount >=
+                                CodingNovelSettings.maxIndentCount
+                            ? null
+                            : () => context.read<CodingAssistBloc>().add(
+                                  CodingAssistNovelSettingsChanged(
+                                    state.novelSettings.copyWith(
+                                      indentCount:
+                                          state.novelSettings.indentCount + 1,
+                                    ),
+                                  ),
+                                ),
+                        icon: const Icon(Icons.add, size: 18),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      const SizedBox(width: 220, child: Text('インデントの種類')),
+                      Expanded(
+                        child: SegmentedButton<CodingNovelIndentSpace>(
+                          segments: const [
+                            ButtonSegment(
+                              value: CodingNovelIndentSpace.fullWidth,
+                              label: Text('全角'),
+                            ),
+                            ButtonSegment(
+                              value: CodingNovelIndentSpace.halfWidth,
+                              label: Text('半角'),
+                            ),
+                          ],
+                          selected: {state.novelSettings.indentSpace},
+                          onSelectionChanged: (next) {
+                            context.read<CodingAssistBloc>().add(
+                              CodingAssistNovelSettingsChanged(
+                                state.novelSettings.copyWith(
+                                  indentSpace: next.first,
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('セリフ行もインデントする'),
+                  subtitle: const Text('登録した記号でセリフと判定した行。オフなら字下げしない（整形時）'),
+                  value: state.novelSettings.indentDialogue,
+                  onChanged: (v) => context.read<CodingAssistBloc>().add(
+                        CodingAssistNovelSettingsChanged(
+                          state.novelSettings.copyWith(indentDialogue: v),
+                        ),
+                      ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'セリフ記号',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 8),
+                  child: Text(
+                    '判定は、字下げを除いた1行の先頭と末尾が、登録した開き／閉じ記号の組と一致するときだけです。'
+                    '地の文の途中に「」などが入る行はセリフ扱いしません。'
+                    '作者ごとに「」『』（）など使う記号が違うため、複数登録できます。',
+                    style: TextStyle(
+                      fontSize: 12,
+                      height: 1.4,
+                      color: Theme.of(context).hintColor,
+                    ),
+                  ),
+                ),
+                for (final delim in state.novelSettings.dialogueDelimiters)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${delim.open} … ${delim.close}',
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: '削除',
+                          onPressed: state.novelSettings.dialogueDelimiters
+                                      .length <=
+                                  1
+                              ? null
+                              : () {
+                                  final next = [
+                                    for (final d
+                                        in state.novelSettings.dialogueDelimiters)
+                                      if (d != delim) d,
+                                  ];
+                                  context.read<CodingAssistBloc>().add(
+                                        CodingAssistNovelSettingsChanged(
+                                          state.novelSettings.copyWith(
+                                            dialogueDelimiters: next,
+                                          ),
+                                        ),
+                                      );
+                                },
+                          icon: const Icon(Icons.close, size: 18),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ],
+                    ),
+                  ),
+                _NovelDialogueDelimiterAddRow(
+                  settings: state.novelSettings,
                 ),
                 const Divider(),
                 const _SettingsSectionTitle('Agent'),
@@ -217,6 +369,105 @@ class _SettingsSectionTitle extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+    );
+  }
+}
+
+/// セリフ記号の追加行（開き／閉じを入力して追加）。
+class _NovelDialogueDelimiterAddRow extends StatefulWidget {
+  const _NovelDialogueDelimiterAddRow({required this.settings});
+
+  final CodingNovelSettings settings;
+
+  @override
+  State<_NovelDialogueDelimiterAddRow> createState() =>
+      _NovelDialogueDelimiterAddRowState();
+}
+
+class _NovelDialogueDelimiterAddRowState
+    extends State<_NovelDialogueDelimiterAddRow> {
+  final _open = TextEditingController();
+  final _close = TextEditingController();
+
+  @override
+  void dispose() {
+    _open.dispose();
+    _close.dispose();
+    super.dispose();
+  }
+
+  void _add() {
+    final open = _open.text.trim();
+    final close = _close.text.trim();
+    final delim = CodingNovelDialogueDelimiter(open: open, close: close);
+    if (!delim.isValid) return;
+    if (widget.settings.dialogueDelimiters.length >=
+        CodingNovelSettings.maxDialogueDelimiters) {
+      return;
+    }
+    if (widget.settings.dialogueDelimiters.contains(delim)) return;
+    context.read<CodingAssistBloc>().add(
+          CodingAssistNovelSettingsChanged(
+            widget.settings.copyWith(
+              dialogueDelimiters: [
+                ...widget.settings.dialogueDelimiters,
+                delim,
+              ],
+            ),
+          ),
+        );
+    _open.clear();
+    _close.clear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final full = widget.settings.dialogueDelimiters.length >=
+        CodingNovelSettings.maxDialogueDelimiters;
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            child: TextField(
+              controller: _open,
+              enabled: !full,
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                hintText: '「',
+              ),
+              onSubmitted: (_) => _add(),
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 6),
+            child: Text('…'),
+          ),
+          SizedBox(
+            width: 56,
+            child: TextField(
+              controller: _close,
+              enabled: !full,
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(),
+                hintText: '」',
+              ),
+              onSubmitted: (_) => _add(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton.icon(
+            onPressed: full ? null : _add,
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('追加'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -103,7 +103,11 @@ class _EditorPaneState extends State<_EditorPane> {
     final oldPath = oldWidget.state.activeTabPath;
     if (path != oldPath) {
       _previewMode = false;
-    } else if (_previewMode && !CodingMarkupPreview.isPreviewablePath(path)) {
+    } else if (_previewMode &&
+        !CodingMarkupPreview.isPreviewablePath(
+          path,
+          workspaceKind: widget.state.index?.kind,
+        )) {
       _previewMode = false;
     }
     // 検索ヒット表示時はプレビューを閉じ、エディタで該当箇所を見せる
@@ -529,9 +533,16 @@ class _EditorPaneState extends State<_EditorPane> {
     );
     // ソース本体色。行番号ガターは別色（indicatorBuilder）。
     final bg = colors.editorBackground;
-    final previewKind = CodingMarkupPreview.kindForPath(state.activeTabPath);
+    final workspaceKind = state.index?.kind;
+    final previewKind = CodingMarkupPreview.kindForPath(
+      state.activeTabPath,
+      workspaceKind: workspaceKind,
+    );
     final showPreviewToggle = previewKind != null;
     final inPreview = _previewMode && previewKind != null;
+    final novelTxt = workspaceKind == CodingWorkspaceKind.novel &&
+        state.activeTabPath != null &&
+        p.extension(state.activeTabPath!).toLowerCase() == '.txt';
 
     return Column(
       children: [
@@ -608,6 +619,13 @@ class _EditorPaneState extends State<_EditorPane> {
                   ),
                   visualDensity: VisualDensity.compact,
                   isSelected: inPreview,
+                ),
+              if (novelTxt && !inPreview)
+                IconButton(
+                  tooltip: 'ルビを挿入（なろう記法）',
+                  onPressed: () => _insertNovelRuby(context),
+                  icon: const Icon(Icons.translate_outlined, size: 20),
+                  visualDensity: VisualDensity.compact,
                 ),
               IconButton(
                 tooltip: '今開いているファイルをAgentに取り込み',
@@ -793,6 +811,9 @@ class _EditorPaneState extends State<_EditorPane> {
     required bool minimapCollapsed,
     required VoidCallback onToggleMinimap,
   }) {
+    final novelMode = state.index?.kind == CodingWorkspaceKind.novel &&
+        path != null &&
+        p.extension(path).toLowerCase() == '.txt';
     return _CodeEditorHost(
       key: key,
       controller: editor,
@@ -805,6 +826,7 @@ class _EditorPaneState extends State<_EditorPane> {
       swiftLsp: widget.swiftLsp,
       minimapCollapsed: minimapCollapsed,
       onToggleMinimap: onToggleMinimap,
+      novelSettings: novelMode ? state.novelSettings : null,
       onSave: path == null
           ? onSave
           : () => context.read<CodingAssistBloc>().add(
@@ -831,6 +853,24 @@ class _EditorPaneState extends State<_EditorPane> {
         onChanged(path, value);
       },
     );
+  }
+
+  Future<void> _insertNovelRuby(BuildContext context) async {
+    final path = state.activeTabPath;
+    if (path == null) return;
+    final editor = controller;
+    final selected = editor.selectedText;
+    final result = await showDialog<({String base, String ruby})>(
+      context: context,
+      builder: (ctx) => _NovelRubyInsertDialog(initialBase: selected),
+    );
+    if (result == null || !context.mounted) return;
+    final snippet = CodingNovelRuby.wrap(
+      base: result.base,
+      ruby: result.ruby,
+    );
+    editor.replaceSelection(snippet);
+    onChanged(path, editor.text);
   }
 
   void _attachOpenFilesToPrompt(
@@ -867,6 +907,96 @@ class _EditorPaneState extends State<_EditorPane> {
   }
 }
 
+class _NovelRubyInsertDialog extends StatefulWidget {
+  const _NovelRubyInsertDialog({this.initialBase = ''});
+
+  final String initialBase;
+
+  @override
+  State<_NovelRubyInsertDialog> createState() => _NovelRubyInsertDialogState();
+}
+
+class _NovelRubyInsertDialogState extends State<_NovelRubyInsertDialog> {
+  late final TextEditingController _base;
+  late final TextEditingController _ruby;
+
+  @override
+  void initState() {
+    super.initState();
+    _base = TextEditingController(text: widget.initialBase);
+    _ruby = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _base.dispose();
+    _ruby.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    Navigator.of(context).pop((
+      base: _base.text.trim(),
+      ruby: _ruby.text.trim(),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('ルビを挿入'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _base,
+              autofocus: widget.initialBase.isEmpty,
+              decoration: const InputDecoration(
+                labelText: '漢字（親文字）',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _ruby,
+              autofocus: widget.initialBase.isNotEmpty,
+              decoration: const InputDecoration(
+                labelText: 'ルビ（読み）',
+                hintText: '例: かんじ',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              onSubmitted: (_) => _submit(),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '挿入形式: |漢字《かんじ》（小説家になろう記法）',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).hintColor,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        FilledButton(onPressed: _submit, child: const Text('挿入')),
+      ],
+    );
+  }
+}
+
 class _CodeEditorHost extends StatefulWidget {
   const _CodeEditorHost({
     super.key,
@@ -893,6 +1023,7 @@ class _CodeEditorHost extends StatefulWidget {
     required this.autofocus,
     required this.showEditor,
     required this.onChanged,
+    this.novelSettings,
   });
 
   final CodeLineEditingController controller;
@@ -904,6 +1035,7 @@ class _CodeEditorHost extends StatefulWidget {
   final CodingSwiftLspController swiftLsp;
   final bool minimapCollapsed;
   final VoidCallback onToggleMinimap;
+  final CodingNovelSettings? novelSettings;
   final VoidCallback onSave;
   final VoidCallback onAlignIndent;
   final VoidCallback onWorkspaceSearch;
@@ -973,6 +1105,12 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
             oldWidget.activeTabPath != widget.activeTabPath)) {
       _scheduleReveal();
     }
+  }
+
+  void _applyNovelNewLine(CodingNovelSettings settings) {
+    final indent = CodingNovelFormatter.newlineIndent(settings);
+    widget.controller.replaceSelection('\n$indent');
+    widget.onChanged(widget.controller.text);
   }
 
   void _scrollSelectionIntoView(CodeLineEditingController next) {
@@ -1316,7 +1454,7 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
                   commentFormatter: CodingSyntax.commentFormatterForPath(
                     widget.activeTabPath,
                   ),
-                  wordWrap: false,
+                  wordWrap: widget.novelSettings != null,
                   autofocus: widget.autofocus,
                   padding: const EdgeInsets.all(8),
                   // re_editor は Cmd/Ctrl+S を CodeShortcutSaveIntent で消費するが
@@ -1329,10 +1467,20 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
                             return null;
                           },
                         ),
+                    if (widget.novelSettings != null)
+                      CodeShortcutNewLineIntent:
+                          CallbackAction<CodeShortcutNewLineIntent>(
+                            onInvoke: (_) {
+                              _applyNovelNewLine(widget.novelSettings!);
+                              return null;
+                            },
+                          ),
                   },
                   style: CodeEditorStyle(
                     fontSize: widget.editorFontSize,
-                    fontFamily: 'monospace',
+                    fontFamily: widget.novelSettings != null
+                        ? null
+                        : 'monospace',
                     backgroundColor: AppColors.of(context).editorBackground,
                     codeTheme: widget.highlight,
                   ),
