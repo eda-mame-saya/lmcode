@@ -97,6 +97,7 @@ class LocalLlmClient {
 
     emitProgress(phase: AiGenerationPhase.connecting);
 
+    final effort = settings.reasoningEffort?.trim();
     final body = <String, dynamic>{
       'model': settings.modelName,
       'stream': false,
@@ -106,6 +107,7 @@ class LocalLlmClient {
         {'role': 'user', 'content': prompt},
       ],
       if (effectiveMax != null) 'max_tokens': effectiveMax,
+      if (effort != null && effort.isNotEmpty) 'reasoning_effort': effort,
     };
 
     late http.Response response;
@@ -306,6 +308,7 @@ class LocalLlmClient {
       ...messages,
     ];
 
+    final effort = settings.reasoningEffort?.trim();
     final request = http.Request('POST', uri)
       ..headers['Content-Type'] = 'application/json'
       ..body = jsonEncode({
@@ -314,6 +317,7 @@ class LocalLlmClient {
         'temperature': effectiveTemperature,
         'messages': apiMessages,
         if (effectiveMax != null) 'max_tokens': effectiveMax,
+        if (effort != null && effort.isNotEmpty) 'reasoning_effort': effort,
       });
 
     // 停止（Stop）用に専用 Client を使う（閉じるとストリームが切れる）

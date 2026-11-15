@@ -14,8 +14,10 @@ import '../../../../routes.dart';
 import '../../../../theme.dart';
 import '../widget/coding_markdown.dart';
 import '../../../api_settings/data/datasources/custom_llm_models_local_datasource.dart';
+import '../../../api_settings/domain/entities/coding_llm_backend.dart';
 import '../../../api_settings/domain/entities/custom_llm_model.dart';
 import '../../../api_settings/domain/entities/local_llm_connection_settings.dart';
+import '../../../api_settings/domain/entities/strata_thinking_effort.dart';
 import '../../../generative_ai/domain/gemma_mtp_draft.dart';
 import '../../../api_settings/domain/usecases/get_connection_settings.dart';
 import '../../../oss_licenses/presentation/open_oss_licenses_page.dart';
@@ -777,6 +779,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
       buildWhen: (p, c) {
         if (p.streamingText != c.streamingText &&
             p.isGenerating == c.isGenerating &&
+            p.isHistoryOpen == c.isHistoryOpen &&
             p.thread?.id == c.thread?.id &&
             p.thread?.messages.length == c.thread?.messages.length &&
             p.pendingPatches.length == c.pendingPatches.length &&
@@ -796,7 +799,9 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
             p.autoSleepDeadline == c.autoSleepDeadline &&
             p.indentSize == c.indentSize &&
             p.localLlm.codingThinkingEnabled ==
-                c.localLlm.codingThinkingEnabled) {
+                c.localLlm.codingThinkingEnabled &&
+            p.strata.thinkingEffort == c.strata.thinkingEffort &&
+            p.codingBackend == c.codingBackend) {
           return false;
         }
         return true;

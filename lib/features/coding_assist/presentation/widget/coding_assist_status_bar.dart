@@ -17,10 +17,11 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final llm = state.localLlm;
     final scheme = Theme.of(context).colorScheme;
-    final modelLabel = llm.resolvedCodingModelLabel;
-    final mtp = state.mtpDraftFileName;
+    final modelLabel = state.agentModelLabel();
+    final mtp = state.codingBackend == CodingLlmBackend.llamaCpp
+        ? state.mtpDraftFileName
+        : null;
     final agentProgress = [
       mtp == null || mtp.isEmpty ? 'model:$modelLabel' : 'model:$modelLabel · MTP',
       'ctx: ${state.usedTokens} / ${state.contextSize}',

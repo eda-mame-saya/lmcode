@@ -12,14 +12,16 @@ import '../../../../theme.dart';
 import '../../../generative_ai/domain/gemma_mtp_draft.dart';
 import '../../../oss_licenses/presentation/open_oss_licenses_page.dart';
 import '../../data/datasources/custom_llm_models_local_datasource.dart';
+import '../../domain/entities/coding_llm_backend.dart';
 import '../../domain/entities/custom_llm_model.dart';
 import '../../domain/entities/local_llm_connection_settings.dart';
+import '../../domain/entities/strata_connection_settings.dart';
 import '../bloc/api_settings_bloc.dart';
 import '../bloc/api_settings_event.dart';
 import '../bloc/api_settings_state.dart';
 
 /// エンジン設定画面（画面ID: S11）。
-/// llama.cpp と Dart SDK パスのみ
+/// llama.cpp／Strata／Dart SDK パス
 class ApiSettingsPage extends StatelessWidget {
   const ApiSettingsPage({super.key});
 
@@ -42,6 +44,11 @@ class _ApiSettingsView extends StatefulWidget {
 class _ApiSettingsViewState extends State<_ApiSettingsView> {
   final _localLlmHostController = TextEditingController();
   final _localLlmPortController = TextEditingController();
+  final _strataHostController = TextEditingController();
+  final _strataPortController = TextEditingController();
+  final _strataCliPathController = TextEditingController();
+  final _strataRunConfigController = TextEditingController();
+  final _strataModelIdController = TextEditingController();
   final _dartSdkPathController = TextEditingController();
   List<CustomLlmModel> _customModels = const [];
 
@@ -68,6 +75,11 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
   void dispose() {
     _localLlmHostController.dispose();
     _localLlmPortController.dispose();
+    _strataHostController.dispose();
+    _strataPortController.dispose();
+    _strataCliPathController.dispose();
+    _strataRunConfigController.dispose();
+    _strataModelIdController.dispose();
     _dartSdkPathController.dispose();
     super.dispose();
   }
@@ -75,8 +87,14 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
   void _hydrateControllers(ApiSettingsState state) {
     if (_controllersHydrated || state.isLoading) return;
     final localLlm = state.settings.localLlm;
+    final strata = state.settings.strata;
     _localLlmHostController.text = localLlm.host;
     _localLlmPortController.text = state.localLlmPortText;
+    _strataHostController.text = strata.host;
+    _strataPortController.text = state.strataPortText;
+    _strataCliPathController.text = strata.cliPath;
+    _strataRunConfigController.text = strata.runConfigPath;
+    _strataModelIdController.text = strata.modelId;
     _dartSdkPathController.text = state.settings.dartSdkPath;
     _controllersHydrated = true;
   }
@@ -149,7 +167,9 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
               current.infoMessage != null) ||
           (previous.isLoading && !current.isLoading) ||
           previous.settings.localLlm.host != current.settings.localLlm.host ||
-          previous.settings.localLlm.port != current.settings.localLlm.port,
+          previous.settings.localLlm.port != current.settings.localLlm.port ||
+          previous.settings.strata.host != current.settings.strata.host ||
+          previous.settings.strata.port != current.settings.strata.port,
       listener: (context, state) {
         _hydrateControllers(state);
 
@@ -160,6 +180,14 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
         if (_controllersHydrated &&
             _localLlmPortController.text != state.localLlmPortText) {
           _localLlmPortController.text = state.localLlmPortText;
+        }
+        if (_controllersHydrated &&
+            _strataHostController.text != state.settings.strata.host) {
+          _strataHostController.text = state.settings.strata.host;
+        }
+        if (_controllersHydrated &&
+            _strataPortController.text != state.strataPortText) {
+          _strataPortController.text = state.strataPortText;
         }
 
         if (state.saveSucceeded) {
@@ -211,8 +239,9 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
                                 'エンジン設定',
                                 style: TextStyle(fontWeight: FontWeight.w700),
                               ),
-                              subtitle:
-                                  const Text('接続・API設定（llama.cpp）'),
+                              subtitle: const Text(
+                                '接続・API設定（llama.cpp / Strata）',
+                              ),
                             ),
                           ),
                           const Divider(height: 1),
@@ -222,7 +251,15 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
+                                  _buildBackendSection(context, state),
+                                  const SizedBox(height: 24),
+                                  const Divider(),
+                                  const SizedBox(height: 24),
                                   _buildLocalLlmSection(context, state),
+                                  const SizedBox(height: 24),
+                                  const Divider(),
+                                  const SizedBox(height: 24),
+                                  _buildStrataSection(context, state),
                                   const SizedBox(height: 24),
                                   const Divider(),
                                   const SizedBox(height: 24),
@@ -284,6 +321,50 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
     );
   }
 
+  Widget _buildBackendSection(BuildContext context, ApiSettingsState state) {
+    final textTheme = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Agent バックエンド', style: textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Text(
+          'S16 Agent が使う推論エンジンを選びます。'
+          '保存時に選んだ方だけ起動し、もう一方は停止します。'
+          'llama.cpp は既定ポート ${LocalLlmPresets.defaultPort}、'
+          'Strata は既定ポート ${StrataPresets.defaultPort} です。',
+          style: textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        InputDecorator(
+          decoration: const InputDecoration(
+            labelText: 'コーディング Agent の接続先',
+            border: OutlineInputBorder(),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<CodingLlmBackend>(
+              value: state.settings.codingBackend,
+              isExpanded: true,
+              items: [
+                for (final backend in CodingLlmBackend.values)
+                  DropdownMenuItem(
+                    value: backend,
+                    child: Text(backend.label),
+                  ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                context.read<ApiSettingsBloc>().add(
+                      ApiSettingsCodingBackendChanged(value),
+                    );
+              },
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildLocalLlmSection(BuildContext context, ApiSettingsState state) {
     final local = state.settings.localLlm;
     final textTheme = Theme.of(context).textTheme;
@@ -296,7 +377,7 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
         const SizedBox(height: 8),
         Text(
           'コーディングアシスト用のモデル・コンテキスト長を設定します。'
-          'ポート衝突時は下のポートを変更してください（自動探索しません）。',
+          '既定ポートは ${LocalLlmPresets.defaultPort}。衝突時のみ変更（自動探索しません）。',
           style: textTheme.bodySmall,
         ),
         const SizedBox(height: 12),
@@ -470,6 +551,158 @@ class _ApiSettingsViewState extends State<_ApiSettingsView> {
           ),
         ),
         const SizedBox(height: 8),
+      ],
+    );
+  }
+
+  Widget _buildStrataSection(BuildContext context, ApiSettingsState state) {
+    final strata = state.settings.strata;
+    final agentIsStrata =
+        state.settings.codingBackend == CodingLlmBackend.strata;
+    final strataActive = agentIsStrata || strata.enabled;
+    final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text('Strata（ローカル API）', style: textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Text(
+          'OpenAI／Anthropic 互換 API。GUI ではなく `strata serve` をアプリから起動し、'
+          '終了時に連動停止します。既定ポートは ${StrataPresets.defaultPort}'
+          '（llama の ${LocalLlmPresets.defaultPort} とずらしています）。'
+          ' Agent バックエンドが Strata のときは自動で ON になり、llama は停止します。',
+          style: textTheme.bodySmall,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          agentIsStrata
+              ? '状態: Agent 接続先 → ${strata.baseUrl}'
+              : strata.enabled
+                  ? '状態: 使用する → ${strata.baseUrl}'
+                  : '状態: 使用しない（Agent が llama.cpp のとき停止）',
+          style: textTheme.bodySmall?.copyWith(
+            color: strataActive ? null : colorScheme.onSurfaceVariant,
+          ),
+        ),
+        if (state.strataCliPathResolved != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            'CLI: ${state.strataCliPathResolved}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (state.strataRunConfigResolved != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            'run config: ${state.strataRunConfigResolved}',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+        if (strataActive &&
+            state.strataCliPathResolved == null &&
+            strata.cliPath.trim().isEmpty) ...[
+          const SizedBox(height: 8),
+          Text(
+            'strata CLI が見つかりません。Strata.app の導入、または CLI パスを指定してください。',
+            style: textTheme.bodySmall?.copyWith(color: colorScheme.error),
+          ),
+        ],
+        const SizedBox(height: 12),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Strata を使用する'),
+          subtitle: Text(
+            agentIsStrata
+                ? 'Agent バックエンドが Strata のため常に ON（保存で llama を停止）'
+                : strata.enabled
+                    ? '設定は保持しますが、Agent が llama.cpp のときは起動しません'
+                    : 'Agent を Strata にすると自動で ON になります',
+            style: textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          value: agentIsStrata ? true : strata.enabled,
+          onChanged: agentIsStrata
+              ? null
+              : (value) => context.read<ApiSettingsBloc>().add(
+                    ApiSettingsStrataEnabledChanged(value),
+                  ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _strataHostController,
+          onChanged: (value) => context.read<ApiSettingsBloc>().add(
+                ApiSettingsStrataHostChanged(value),
+              ),
+          decoration: InputDecoration(
+            labelText: strataActive ? 'ベースURL *' : 'ベースURL（任意）',
+            hintText: StrataPresets.defaultHost,
+            errorText: state.strataHostError,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _strataPortController,
+          keyboardType: TextInputType.number,
+          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          onChanged: (value) => context.read<ApiSettingsBloc>().add(
+                ApiSettingsStrataPortChanged(value),
+              ),
+          decoration: InputDecoration(
+            labelText: strataActive ? 'ポート *' : 'ポート（任意）',
+            hintText: '${StrataPresets.defaultPort}',
+            helperText:
+                '既定 ${StrataPresets.defaultPort}（llama と別ポート）。衝突時のみ変更',
+            errorText: state.strataPortError,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _strataModelIdController,
+          onChanged: (value) => context.read<ApiSettingsBloc>().add(
+                ApiSettingsStrataModelIdChanged(value),
+              ),
+          decoration: InputDecoration(
+            labelText: 'model ID（任意）',
+            hintText: StrataPresets.fallbackModelId,
+            helperText: '空＝run config の model_name、または strata',
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _strataCliPathController,
+          onChanged: (value) => context.read<ApiSettingsBloc>().add(
+                ApiSettingsStrataCliPathChanged(value),
+              ),
+          decoration: const InputDecoration(
+            labelText: 'strata CLI パス（任意）',
+            hintText: '/Applications/Strata.app/.../bin/strata',
+            helperText: '空＝Strata.app 同梱 CLI を自動探索',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _strataRunConfigController,
+          onChanged: (value) => context.read<ApiSettingsBloc>().add(
+                ApiSettingsStrataRunConfigPathChanged(value),
+              ),
+          decoration: const InputDecoration(
+            labelText: 'run config パス（任意）',
+            hintText: '~/.local/share/strata/install/strata-….json',
+            helperText: '空＝導入済みモデルから自動選択',
+            border: OutlineInputBorder(),
+          ),
+        ),
       ],
     );
   }

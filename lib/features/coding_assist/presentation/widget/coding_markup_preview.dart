@@ -240,19 +240,30 @@ class _NovelPreview extends StatelessWidget {
   final String data;
   final Color foreground;
 
+  /// 本文のフォントサイズ。
+  static const double fontSize = 16;
+
+  /// ルビは本文の半分。
+  static const double rubyFontSize = fontSize * 0.5;
+
+  /// 行の高さ倍率。上側の余白（半分）にルビ1行分が収まるようにする。
+  /// 余白 = fontSize * (lineHeight - 1) / 2 ≧ rubyFontSize。
+  static const double lineHeight = 2.1;
+
   @override
   Widget build(BuildContext context) {
     final lines = data.isEmpty ? const ['（空のファイル）'] : data.split('\n');
     final base = TextStyle(
       color: foreground,
-      fontSize: 16,
-      height: 1.9,
+      fontSize: fontSize,
+      height: lineHeight,
     );
     final rubyStyle = TextStyle(
       color: foreground.withValues(alpha: 0.85),
-      fontSize: 10,
+      fontSize: rubyFontSize,
       height: 1.0,
     );
+    final textScaler = MediaQuery.textScalerOf(context);
 
     return SelectionArea(
       child: ListView.builder(
@@ -261,38 +272,153 @@ class _NovelPreview extends StatelessWidget {
         itemBuilder: (context, index) {
           final line = lines[index];
           if (line.isEmpty) {
-            return const SizedBox(height: 16);
+            return SizedBox(height: textScaler.scale(fontSize));
           }
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Text.rich(
-              TextSpan(
-                children: [
-                  for (final span in CodingNovelRuby.parse(line))
-                    switch (span) {
-                      CodingNovelPlainSpan(:final text) => TextSpan(
-                          text: text,
-                          style: base,
+          return Text.rich(
+            TextSpan(
+              children: [
+                for (final span in CodingNovelRuby.parse(line))
+                  switch (span) {
+                    CodingNovelPlainSpan(:final text) => TextSpan(
+                        text: text,
+                        style: base,
+                      ),
+                    CodingNovelRubySpan(:final baseString, :final ruby) =>
+                      WidgetSpan(
+                        alignment: PlaceholderAlignment.baseline,
+                        baseline: TextBaseline.alphabetic,
+                        child: _RubyText(
+                          baseString: baseString,
+                          ruby: ruby,
+                          baseStyle: base,
+                          rubyStyle: rubyStyle,
+                          textScaler: textScaler,
                         ),
-                      CodingNovelRubySpan(:final baseString, :final ruby) =>
-                        WidgetSpan(
-                          alignment: PlaceholderAlignment.baseline,
-                          baseline: TextBaseline.alphabetic,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(ruby, style: rubyStyle),
-                              Text(baseString, style: base),
-                            ],
-                          ),
-                        ),
-                    },
-                ],
-              ),
+                      ),
+                  },
+              ],
             ),
           );
         },
       ),
     );
   }
+}
+
+/// 親文字と同じ行高のまま、ルビを行の上側余白に小さく描く。
+///
+/// 親文字の `Text` がそのままレイアウト・ベースラインを担うので、
+/// 周囲の本文と行の高さが変わらない（Column だとルビ側のベースラインに
+/// 揃ってしまい、親文字が1行分下にずれて見える）。ルビは `CustomPaint` の
+/// 前景として描くだけで、ルビの方が広いときは親文字側に左右パディングを足す。
+class _RubyText extends StatelessWidget {
+  const _RubyText({
+    required this.baseString,
+    required this.ruby,
+    required this.baseStyle,
+    required this.rubyStyle,
+    required this.textScaler,
+  });
+
+  final String baseString;
+  final String ruby;
+  final TextStyle baseStyle;
+  final TextStyle rubyStyle;
+  final TextScaler textScaler;
+
+  @override
+  Widget build(BuildContext context) {
+    final direction = Directionality.of(context);
+    final rubyPainter = TextPainter(
+      text: TextSpan(text: ruby, style: rubyStyle),
+      textDirection: direction,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final basePainter = TextPainter(
+      text: TextSpan(text: baseString, style: baseStyle),
+      textDirection: direction,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    final extra = rubyPainter.width - basePainter.width;
+    final pad = extra > 0 ? extra / 2 : 0.0;
+    final rubyHeight = rubyPainter.height;
+    final rubyWidth = rubyPainter.width;
+    rubyPainter.dispose();
+    basePainter.dispose();
+
+    return CustomPaint(
+      foregroundPainter: _RubyPainter(
+        ruby: ruby,
+        style: rubyStyle,
+        direction: direction,
+        textScaler: textScaler,
+        rubyWidth: rubyWidth,
+        rubyHeight: rubyHeight,
+        baseFontSize: textScaler.scale(
+          baseStyle.fontSize ?? _NovelPreview.fontSize,
+        ),
+      ),
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: pad),
+        child: Text(
+          baseString,
+          style: baseStyle,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.visible,
+        ),
+      ),
+    );
+  }
+}
+
+class _RubyPainter extends CustomPainter {
+  _RubyPainter({
+    required this.ruby,
+    required this.style,
+    required this.direction,
+    required this.textScaler,
+    required this.rubyWidth,
+    required this.rubyHeight,
+    required this.baseFontSize,
+  });
+
+  final String ruby;
+  final TextStyle style;
+  final TextDirection direction;
+  final TextScaler textScaler;
+  final double rubyWidth;
+  final double rubyHeight;
+  final double baseFontSize;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final painter = TextPainter(
+      text: TextSpan(text: ruby, style: style),
+      textDirection: direction,
+      textScaler: textScaler,
+      maxLines: 1,
+    )..layout();
+    // 親文字の字面（em ボックス）上端 = 行の上側余白。その直上にルビの下端を置く。
+    final halfLeading = ((size.height - baseFontSize) / 2).clamp(
+      0.0,
+      size.height,
+    );
+    final top = (halfLeading - rubyHeight).clamp(0.0, size.height);
+    final left = (size.width - rubyWidth) / 2;
+    painter.paint(canvas, Offset(left, top));
+    painter.dispose();
+  }
+
+  @override
+  bool shouldRepaint(covariant _RubyPainter old) =>
+      old.ruby != ruby ||
+      old.style != style ||
+      old.direction != direction ||
+      old.textScaler != textScaler ||
+      old.rubyWidth != rubyWidth ||
+      old.rubyHeight != rubyHeight ||
+      old.baseFontSize != baseFontSize;
 }

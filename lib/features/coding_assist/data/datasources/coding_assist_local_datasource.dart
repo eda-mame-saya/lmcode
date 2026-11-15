@@ -5,45 +5,125 @@ import 'package:path/path.dart' as p;
 
 import '../../../drive/domain/drive_system_folders.dart';
 import '../../domain/coding_folder_expansion.dart';
+import '../../domain/entities/coding_assist_entities.dart';
 
-/// 直近ワークスペースとフォルダ展開。会話は保存しない。
+/// 直近ワークスペース・フォルダ展開・会話スレッド。
 class CodingAssistLocalDataSource {
+  CodingAssistLocalDataSource({String? rootPathOverride})
+    : _rootPathOverride = rootPathOverride;
+
+  /// テスト用。親ディレクトリ（その直下に `coding_assist/`）。
+  final String? _rootPathOverride;
+
   /// `~/Documents/LMCode/coding_assist`。ベースフォルダ設定は使わない。
   Future<Directory> _ensureRoot() async {
-    final home = (Platform.environment['HOME'] ??
-            Platform.environment['USERPROFILE'])
-        ?.trim();
-    final base = (home == null || home.isEmpty)
-        ? Directory.systemTemp.path
-        : p.join(home, 'Documents');
-    final root = Directory(
-      p.join(base, 'LMCode', DriveSystemFolders.codingAssist),
-    );
+    final String rootPath;
+    final override = _rootPathOverride?.trim();
+    if (override != null && override.isNotEmpty) {
+      rootPath = p.join(override, DriveSystemFolders.codingAssist);
+    } else {
+      final home = (Platform.environment['HOME'] ??
+              Platform.environment['USERPROFILE'])
+          ?.trim();
+      final base = (home == null || home.isEmpty)
+          ? Directory.systemTemp.path
+          : p.join(home, 'Documents');
+      rootPath = p.join(base, 'LMCode', DriveSystemFolders.codingAssist);
+    }
+    final root = Directory(rootPath);
     if (!await root.exists()) {
       await root.create(recursive: true);
+    }
+    final threads = Directory(p.join(root.path, 'threads'));
+    if (!await threads.exists()) {
+      await threads.create(recursive: true);
     }
     return root;
   }
 
   File _indexFile(String rootPath) => File(p.join(rootPath, 'index.json'));
 
+  File _threadFile(String rootPath, String id) =>
+      File(p.join(rootPath, 'threads', '$id.json'));
+
   Future<Map<String, dynamic>> _readIndexMap(String rootPath) async {
     final index = _indexFile(rootPath);
     if (!await index.exists()) {
-      return {'version': 1, 'recentWorkspaces': []};
+      return {'version': 1, 'threads': [], 'recentWorkspaces': []};
     }
     try {
       final decoded = jsonDecode(await index.readAsString());
       if (decoded is Map<String, dynamic>) return decoded;
       if (decoded is Map) return Map<String, dynamic>.from(decoded);
     } catch (_) {}
-    return {'version': 1, 'recentWorkspaces': []};
+    return {'version': 1, 'threads': [], 'recentWorkspaces': []};
   }
 
   Future<void> _writeIndexMap(String rootPath, Map<String, dynamic> map) async {
     await _indexFile(
       rootPath,
     ).writeAsString(const JsonEncoder.withIndent('  ').convert(map));
+  }
+
+  /// 一覧を返す。メッセージの無い「新規」は index と threads ファイルから外す。
+  Future<List<CodingThreadSummary>> listSummaries() async {
+    final root = await _ensureRoot();
+    final map = await _readIndexMap(root.path);
+    final threads = map['threads'];
+    final list = <CodingThreadSummary>[];
+    if (threads is List) {
+      for (final item in threads) {
+        if (item is Map<String, dynamic>) {
+          list.add(CodingThreadSummary.fromJson(item));
+        } else if (item is Map) {
+          list.add(
+            CodingThreadSummary.fromJson(Map<String, dynamic>.from(item)),
+          );
+        }
+      }
+    }
+    final kept = <CodingThreadSummary>[];
+    final dropIds = <String>[];
+    for (final summary in list) {
+      if (!CodingThread.isPlaceholderTitle(summary.title)) {
+        kept.add(summary);
+        continue;
+      }
+      if (summary.id.trim().isEmpty ||
+          summary.id.contains('/') ||
+          summary.id.contains('\\') ||
+          summary.id.contains('..')) {
+        dropIds.add(summary.id);
+        continue;
+      }
+      final thread = await loadThread(summary.id);
+      if (thread != null && thread.persists) {
+        kept.add(summary);
+        continue;
+      }
+      final file = _threadFile(root.path, summary.id);
+      if (thread == null && await file.exists()) {
+        kept.add(summary);
+        continue;
+      }
+      dropIds.add(summary.id);
+    }
+    if (dropIds.isNotEmpty) {
+      for (final id in dropIds) {
+        if (id.trim().isEmpty ||
+            id.contains('/') ||
+            id.contains('\\') ||
+            id.contains('..')) {
+          continue;
+        }
+        final file = _threadFile(root.path, id);
+        if (await file.exists()) await file.delete();
+      }
+      map['threads'] = kept.map((s) => s.toJson()).toList();
+      await _writeIndexMap(root.path, map);
+    }
+    kept.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    return kept;
   }
 
   Future<List<String>> listRecentWorkspaces() async {
@@ -62,6 +142,95 @@ class CodingAssistLocalDataSource {
       }
     }
     return out;
+  }
+
+  Future<CodingThread?> loadThread(String id) async {
+    final root = await _ensureRoot();
+    final file = _threadFile(root.path, id);
+    if (!await file.exists()) return null;
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is Map<String, dynamic>) {
+        return CodingThread.fromJson(decoded);
+      }
+      if (decoded is Map) {
+        return CodingThread.fromJson(Map<String, dynamic>.from(decoded));
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> saveThread(CodingThread thread) async {
+    if (!thread.persists) {
+      await _discardIfPresent(thread.id);
+      return;
+    }
+    final root = await _ensureRoot();
+    await _threadFile(root.path, thread.id).writeAsString(
+      const JsonEncoder.withIndent('  ').convert(thread.toJson()),
+    );
+    final map = await _readIndexMap(root.path);
+    final summaries = await listSummaries();
+    final next = [
+      CodingThreadSummary(
+        id: thread.id,
+        title: thread.title,
+        workspaceRootPath: thread.workspaceRootPath,
+        updatedAt: thread.updatedAt,
+      ),
+      ...summaries.where((s) => s.id != thread.id),
+    ];
+    map['threads'] = next.map((s) => s.toJson()).toList();
+    await _writeIndexMap(root.path, map);
+  }
+
+  /// 未保存の空会話では index を書き換えない。
+  Future<void> _discardIfPresent(String id) async {
+    if (id.trim().isEmpty ||
+        id.contains('/') ||
+        id.contains('\\') ||
+        id.contains('..')) {
+      return;
+    }
+    final root = await _ensureRoot();
+    final file = _threadFile(root.path, id);
+    final existed = await file.exists();
+    final map = await _readIndexMap(root.path);
+    final threads = map['threads'];
+    final inIndex =
+        threads is List &&
+        threads.any((item) => item is Map && '${item['id']}' == id);
+    if (!existed && !inIndex) return;
+    if (existed) {
+      final loaded = await loadThread(id);
+      // 同じ id にメッセージがある会話は、空の保存では消さない。
+      if (loaded == null || loaded.persists) return;
+      await file.delete();
+    }
+    if (threads is List && inIndex) {
+      map['threads'] = threads.where((item) {
+        if (item is Map) return '${item['id']}' != id;
+        return true;
+      }).toList();
+      await _writeIndexMap(root.path, map);
+    }
+  }
+
+  Future<void> deleteThread(String id) async {
+    final root = await _ensureRoot();
+    final file = _threadFile(root.path, id);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    final map = await _readIndexMap(root.path);
+    final threads = map['threads'];
+    if (threads is List) {
+      map['threads'] = threads.where((item) {
+        if (item is Map) return '${item['id']}' != id;
+        return true;
+      }).toList();
+      await _writeIndexMap(root.path, map);
+    }
   }
 
   Future<void> rememberWorkspace(String workspaceRoot) async {

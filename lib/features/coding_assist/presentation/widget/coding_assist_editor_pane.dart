@@ -1108,6 +1108,9 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
   }
 
   void _applyNovelNewLine(CodingNovelSettings settings) {
+    // 変換中は _NovelNewLineAction.consumesKey が false になり IME へ渡るが、
+    // 万一 invoke された場合も改行しない。
+    if (widget.controller.isComposing) return;
     final indent = CodingNovelFormatter.newlineIndent(settings);
     widget.controller.replaceSelection('\n$indent');
     widget.onChanged(widget.controller.text);
@@ -1230,7 +1233,11 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
         !selection.isCollapsed &&
         selectedText.isNotEmpty;
     final query = _selectedIdentifier();
-    if (!canAttach && query == null) return;
+    final canEmphasize =
+        widget.novelSettings != null &&
+        !selection.isCollapsed &&
+        selectedText.trim().isNotEmpty;
+    if (!canAttach && query == null && !canEmphasize) return;
     final startLine = selection.startIndex + 1;
     final endLine = selection.endIndex + 1;
     final selected = await showMenu<String>(
@@ -1249,9 +1256,18 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
           ),
         if (query != null)
           const PopupMenuItem(value: 'definition', child: Text('定義を表示')),
+        if (canEmphasize)
+          const PopupMenuItem(value: 'emphasis', child: Text('強調ルビを付与')),
       ],
     );
     if (!mounted || selected == null) return;
+    if (selected == 'emphasis' && canEmphasize) {
+      widget.controller.replaceSelection(
+        CodingNovelRuby.emphasize(selectedText),
+      );
+      widget.onChanged(widget.controller.text);
+      return;
+    }
     if (selected == 'attach' && path != null && canAttach) {
       context.read<CodingAssistBloc>().add(
         CodingAssistSelectionAttached(
@@ -1468,13 +1484,13 @@ class _CodeEditorHostState extends State<_CodeEditorHost> {
                           },
                         ),
                     if (widget.novelSettings != null)
-                      CodeShortcutNewLineIntent:
-                          CallbackAction<CodeShortcutNewLineIntent>(
-                            onInvoke: (_) {
-                              _applyNovelNewLine(widget.novelSettings!);
-                              return null;
-                            },
-                          ),
+                      CodeShortcutNewLineIntent: _NovelNewLineAction(
+                        controller: widget.controller,
+                        onInvoke: (_) {
+                          _applyNovelNewLine(widget.novelSettings!);
+                          return null;
+                        },
+                      ),
                   },
                   style: CodeEditorStyle(
                     fontSize: widget.editorFontSize,
@@ -1569,4 +1585,18 @@ class _InactiveAutocompletePrompts implements CodeAutocompletePromptsBuilder {
   ) {
     return null;
   }
+}
+
+/// 小説モードの改行字下げ。re_editor 既定の `_CompoDoNothingCallbackAction` と同様、
+/// IME 変換中は Enter を消費せずプラットフォーム（IME 確定）へ渡す。
+class _NovelNewLineAction extends CallbackAction<CodeShortcutNewLineIntent> {
+  _NovelNewLineAction({
+    required this.controller,
+    required super.onInvoke,
+  });
+
+  final CodeLineEditingController controller;
+
+  @override
+  bool consumesKey(CodeShortcutNewLineIntent intent) => !controller.isComposing;
 }

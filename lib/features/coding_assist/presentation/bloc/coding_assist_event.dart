@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 
 import '../../../api_settings/domain/entities/custom_llm_model.dart';
+import '../../../api_settings/domain/entities/strata_thinking_effort.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../domain/coding_novel_settings.dart';
@@ -187,6 +188,30 @@ final class CodingAssistNewThreadRequested extends CodingAssistEvent {
   const CodingAssistNewThreadRequested();
 }
 
+final class CodingAssistHistoryOpenRequested extends CodingAssistEvent {
+  const CodingAssistHistoryOpenRequested();
+}
+
+final class CodingAssistHistoryCloseRequested extends CodingAssistEvent {
+  const CodingAssistHistoryCloseRequested();
+}
+
+final class CodingAssistOpenThreadRequested extends CodingAssistEvent {
+  const CodingAssistOpenThreadRequested(this.threadId);
+  final String threadId;
+
+  @override
+  List<Object?> get props => [threadId];
+}
+
+final class CodingAssistDeleteThreadRequested extends CodingAssistEvent {
+  const CodingAssistDeleteThreadRequested(this.threadId);
+  final String threadId;
+
+  @override
+  List<Object?> get props => [threadId];
+}
+
 final class CodingAssistSelectionAttached extends CodingAssistEvent {
   const CodingAssistSelectionAttached(this.selection);
   final CodingAttachedSelection selection;
@@ -303,6 +328,16 @@ final class CodingAssistCodingThinkingChanged extends CodingAssistEvent {
 
   @override
   List<Object?> get props => [enabled];
+}
+
+/// Strata 利用時の思考段階（`reasoning_effort`。再起動不要）。
+final class CodingAssistStrataThinkingEffortChanged extends CodingAssistEvent {
+  const CodingAssistStrataThinkingEffortChanged(this.effort);
+
+  final StrataThinkingEffort effort;
+
+  @override
+  List<Object?> get props => [effort];
 }
 
 /// S16 ツールバーの Agent自動実行（変更案の自動適用）。llama-server は再起動しない。

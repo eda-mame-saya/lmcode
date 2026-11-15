@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../domain/entities/coding_llm_backend.dart';
 import '../../domain/entities/custom_llm_model.dart';
 import '../../domain/entities/generative_ai_provider.dart';
 
@@ -73,6 +74,62 @@ final class ApiSettingsLocalLlmCodingContextChanged extends ApiSettingsEvent {
 
 final class ApiSettingsDartSdkPathChanged extends ApiSettingsEvent {
   const ApiSettingsDartSdkPathChanged(this.value);
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsCodingBackendChanged extends ApiSettingsEvent {
+  const ApiSettingsCodingBackendChanged(this.backend);
+  final CodingLlmBackend backend;
+
+  @override
+  List<Object?> get props => [backend];
+}
+
+final class ApiSettingsStrataEnabledChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataEnabledChanged(this.value);
+  final bool value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsStrataHostChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataHostChanged(this.value);
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsStrataPortChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataPortChanged(this.value);
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsStrataCliPathChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataCliPathChanged(this.value);
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsStrataRunConfigPathChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataRunConfigPathChanged(this.value);
+  final String value;
+
+  @override
+  List<Object?> get props => [value];
+}
+
+final class ApiSettingsStrataModelIdChanged extends ApiSettingsEvent {
+  const ApiSettingsStrataModelIdChanged(this.value);
   final String value;
 
   @override

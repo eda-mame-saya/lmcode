@@ -6,11 +6,15 @@ import 'package:bloc/bloc.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 
+import '../../../api_settings/domain/entities/coding_llm_backend.dart';
 import '../../../api_settings/domain/entities/local_llm_connection_settings.dart';
+import '../../../api_settings/domain/entities/strata_connection_settings.dart';
 import '../../../api_settings/domain/usecases/get_connection_settings.dart';
 import '../../../api_settings/domain/usecases/save_connection_settings.dart';
+import '../../../generative_ai/data/coding_llm_sidecar_coordinator.dart';
 import '../../../generative_ai/data/local_llm_client.dart';
 import '../../../generative_ai/data/local_llm_server_launcher.dart';
+import '../../../generative_ai/data/strata_server_launcher.dart';
 import '../../../generative_ai/domain/ai_generation_progress.dart';
 import '../../data/coding_flutter_verify_runner.dart';
 import '../../data/coding_system_sleeper.dart';
@@ -57,12 +61,16 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     required SaveConnectionSettings saveConnectionSettings,
     required LocalLlmClient localLlmClient,
     required LocalLlmServerLauncher localLlmServerLauncher,
+    required StrataServerLauncher strataServerLauncher,
+    required CodingLlmSidecarCoordinator sidecarCoordinator,
     required CodingUiSettingsLocalDataSource uiSettingsLocalDataSource,
   }) : _repository = repository,
        _getConnectionSettings = getConnectionSettings,
        _saveConnectionSettings = saveConnectionSettings,
        _localLlmClient = localLlmClient,
        _localLlmServerLauncher = localLlmServerLauncher,
+       _strataServerLauncher = strataServerLauncher,
+       _sidecarCoordinator = sidecarCoordinator,
        _uiSettingsLocalDataSource = uiSettingsLocalDataSource,
        super(const CodingAssistState()) {
     on<CodingAssistStarted>(_onStarted);
@@ -86,6 +94,10 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistReproposePatchRequested>(_onReproposePatch);
     on<CodingAssistAddFileConflictChoiceRequested>(_onAddFileConflictChoice);
     on<CodingAssistNewThreadRequested>(_onNewThread);
+    on<CodingAssistHistoryOpenRequested>(_onHistoryOpen);
+    on<CodingAssistHistoryCloseRequested>(_onHistoryClose);
+    on<CodingAssistOpenThreadRequested>(_onOpenThread);
+    on<CodingAssistDeleteThreadRequested>(_onDeleteThread);
     on<CodingAssistSelectionAttached>(_onSelectionAttached);
     on<CodingAssistSelectionCleared>(_onSelectionCleared);
     on<CodingAssistFolderFilesAttachRequested>(_onFolderFilesAttachRequested);
@@ -100,6 +112,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistRevokeLastTurnRequested>(_onRevokeLastTurn);
     on<CodingAssistCodingModelChanged>(_onCodingModelChanged);
     on<CodingAssistCodingThinkingChanged>(_onCodingThinkingChanged);
+    on<CodingAssistStrataThinkingEffortChanged>(_onStrataThinkingEffortChanged);
     on<CodingAssistAgentAutoRunChanged>(_onAgentAutoRunChanged);
     on<CodingAssistUiFontSizesChanged>(_onUiFontSizesChanged);
     on<CodingAssistHarnessChanged>(_onHarnessChanged);
@@ -135,6 +148,8 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
   final SaveConnectionSettings _saveConnectionSettings;
   final LocalLlmClient _localLlmClient;
   final LocalLlmServerLauncher _localLlmServerLauncher;
+  final StrataServerLauncher _strataServerLauncher;
+  final CodingLlmSidecarCoordinator _sidecarCoordinator;
   final CodingUiSettingsLocalDataSource _uiSettingsLocalDataSource;
 
   bool _cancelRequested = false;
@@ -541,6 +556,9 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     String? error;
     String? mtpDraft;
     var llm = const LocalLlmConnectionSettings();
+    var strata = const StrataConnectionSettings();
+    var codingBackend = CodingLlmBackend.llamaCpp;
+    int? strataCtx;
     var recent = <String>[];
     final uiFonts = _uiSettingsLocalDataSource.loadFontSizes();
     final harness = _uiSettingsLocalDataSource.loadHarness();
@@ -549,36 +567,85 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     final novelSettings = _uiSettingsLocalDataSource.loadNovelSettings();
     final promptFavorites = _uiSettingsLocalDataSource.loadPromptFavorites();
     try {
-      final settings = await _getConnectionSettings();
+      var settings = await _getConnectionSettings();
+      // Agent=Strata なのに strata.enabled=false の旧設定を揃える
+      if (settings.codingBackend == CodingLlmBackend.strata &&
+          !settings.strata.enabled) {
+        settings = settings.copyWith(
+          strata: settings.strata.copyWith(enabled: true),
+        );
+        try {
+          await _saveConnectionSettings(settings);
+        } catch (_) {}
+      }
       llm = settings.localLlm;
+      strata = settings.strata;
+      codingBackend = settings.codingBackend;
+
+      final needSidecar = codingBackend == CodingLlmBackend.strata ||
+          llm.enabled;
+      if (needSidecar) {
+        emit(
+          state.copyWith(
+            isLlmBusy: true,
+            agentStatusMessage: codingBackend == CodingLlmBackend.strata
+                ? 'Strata を起動中（llama 停止）…'
+                : 'コーディング用モデルを起動中…',
+          ),
+        );
+      }
+      final sidecar = await _sidecarCoordinator.apply(
+        settings: settings,
+        onStatus: (message) {
+          debugPrint('[CodingLlm] $message');
+        },
+      );
+      mtpDraft = sidecar.llamaDraft;
+      strataCtx = sidecar.strataContextSize;
+      if (codingBackend == CodingLlmBackend.strata) {
+        strata = strata.copyWith(enabled: true);
+      }
+      if (sidecar.error != null) {
+        error = sidecar.error;
+      }
     } catch (e) {
       error = '設定の読込に失敗: $e';
     }
     try {
       recent = await _repository.listRecentWorkspaces();
+      // 保存済みの空「新規」を履歴から外す。
+      await _repository.listSummaries();
     } catch (e) {
       error = error == null ? '$e' : '$error / $e';
     }
 
-    if (llm.enabled) {
-      emit(
-        state.copyWith(isLlmBusy: true, agentStatusMessage: 'コーディング用モデルを起動中…'),
-      );
-      try {
-        mtpDraft = await _localLlmServerLauncher.applySettings(
-          settings: llm.forServer(),
-          isHealthy: _localLlmClient.isReachable,
-        );
-      } catch (e) {
-        error = error == null ? 'コーディング用モデルの起動に失敗: $e' : '$error（起動失敗: $e）';
-      }
-    }
+    final agentReady = switch (codingBackend) {
+      CodingLlmBackend.llamaCpp => llm.isCodingUsable,
+      CodingLlmBackend.strata => strata.hasEndpoint,
+    };
+    final effectiveStrataCtx =
+        (strataCtx != null && strataCtx > 0)
+            ? strataCtx
+            : StrataPresets.defaultContextSize;
+    final statusMessage = !agentReady
+        ? (codingBackend == CodingLlmBackend.strata
+            ? 'Strata の接続先が未設定です'
+            : 'ローカルLLMがOFFです')
+        : codingBackend == CodingLlmBackend.strata
+            ? 'Strata 準備完了（${strata.baseUrl}・ctx $effectiveStrataCtx）'
+            : mtpDraft == null
+                ? 'コーディング用モデル準備完了'
+                : 'MTP 下書き係を併用します（$mtpDraft）';
 
     emit(
       state.copyWith(
         isLoading: false,
         isLlmBusy: false,
         localLlm: llm,
+        strata: strata,
+        codingBackend: codingBackend,
+        strataContextSize: strataCtx,
+        clearStrataContextSize: strataCtx == null,
         uiFontSizes: uiFonts,
         harness: harness,
         autoSleepSettings: autoSleep,
@@ -589,14 +656,12 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         usedTokens: _estimateUsedTokens(
           messages: const [],
           draft: '',
-          contextSize: llm.codingContextSize,
+          contextSize: codingBackend == CodingLlmBackend.strata
+              ? effectiveStrataCtx
+              : llm.codingContextSize,
           harness: harness,
         ),
-        agentStatusMessage: !llm.enabled
-            ? 'ローカルLLMがOFFです'
-            : mtpDraft == null
-                ? 'コーディング用モデル準備完了'
-                : 'MTP 下書き係を併用します（$mtpDraft）',
+        agentStatusMessage: statusMessage,
         mtpDraftFileName: mtpDraft,
         clearMtpDraft: mtpDraft == null,
         errorMessage: error,
@@ -1037,6 +1102,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
           recentWorkspaces: recent,
           folderExpansion: folderExpansion,
           clearFolderExpansion: folderExpansion == null,
+          isHistoryOpen: false,
           isEditingLastUser: false,
           clearAttachedSelection: true,
           clearAttachedOpenFiles: true,
@@ -1057,6 +1123,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
               '（${index.relativeFiles.length} files）',
         ),
       );
+      await _repository.saveThread(thread);
     } catch (e) {
       emit(state.copyWith(errorMessage: '$e', clearWorkspaceStatus: true));
     }
@@ -1335,7 +1402,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
   ) async {
     final root = state.workspaceRoot;
     if (root == null || state.isGenerating || state.isLlmBusy) return;
-    if (!state.localLlm.isCodingUsable) {
+    if (!state.isAgentLlmUsable) {
       emit(state.copyWith(errorMessage: 'コーディング用 LLM が利用できません'));
       return;
     }
@@ -1951,7 +2018,7 @@ $avoid$guidance
     final root = state.workspaceRoot;
     final thread = state.thread;
     if (userText.trim().isEmpty || root == null || thread == null) return;
-    if (!state.localLlm.isCodingUsable) {
+    if (!state.isAgentLlmUsable) {
       emit(state.copyWith(errorMessage: 'コーディング用 LLM が利用できません'));
       return;
     }
@@ -2122,7 +2189,9 @@ $avoid$guidance
         tools.noteSuccessfulRead(read.path);
       }
       final system = _systemPromptFor(root);
-      final codingSettings = state.localLlm.forServer();
+      final codingSettings = state.agentChatSettings(
+        strataModelId: _strataServerLauncher.resolvedModelId,
+      );
       var lastStreamEmit = DateTime.fromMillisecondsSinceEpoch(0);
       // tool 実行後は必ず後続の LLM 応答が必要（無いのに完了にしない）
       var needsFollowUpAfterTools = false;
@@ -2612,12 +2681,15 @@ $avoid$guidance
           finalWarn = CodingContextWarningLevel.compacted;
         }
         current = current.copyWith(contextWarningLevel: finalWarn);
+        await _repository.saveThread(current);
+        final summaries = await _repository.listSummaries();
         emit(
           state.copyWith(
             isGenerating: false,
             streamingText: '',
             // generationTrace は次ターン開始まで残し、直前ログとして確認可能にする
             thread: current,
+            threadSummaries: summaries,
             usedTokens: finalUsed,
             warningLevel: finalWarn,
             agentStatusMessage: _cancelRequested ? '停止しました' : '完了',
@@ -3670,7 +3742,13 @@ $avoid$guidance
     try {
       final settings = await _getConnectionSettings();
       final llm = settings.localLlm;
-      emit(state.copyWith(localLlm: llm));
+      emit(
+        state.copyWith(
+          localLlm: llm,
+          strata: settings.strata,
+          codingBackend: settings.codingBackend,
+        ),
+      );
       if (!llm.codingAutoApplyPatches) return;
     } catch (_) {
       if (!state.localLlm.codingAutoApplyPatches) return;
@@ -3735,6 +3813,9 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
+    if (thread != null) {
+      await _repository.saveThread(thread);
+    }
     if (!emit.isDone) {
       emit(
         state.copyWith(
@@ -4040,6 +4121,19 @@ $avoid$guidance
       }
       return;
     }
+    try {
+      await _repository.saveThread(existing);
+    } catch (e) {
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            isGenerating: false,
+            errorMessage: '会話を保存できませんでした: $e',
+          ),
+        );
+      }
+      return;
+    }
     final thread = CodingThread(
       id: const Uuid().v4(),
       title: CodingThread.placeholderTitle,
@@ -4047,6 +4141,20 @@ $avoid$guidance
       messages: const [],
       updatedAt: DateTime.now(),
     );
+    try {
+      await _repository.saveThread(thread);
+    } catch (e) {
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            isGenerating: false,
+            errorMessage: '新しい会話を作れませんでした: $e',
+          ),
+        );
+      }
+      return;
+    }
+    final summaries = await _repository.listSummaries();
     if (emit.isDone) return;
     emit(
       state.copyWith(
@@ -4054,6 +4162,8 @@ $avoid$guidance
         pendingPatches: const [],
         isGenerating: false,
         streamingText: '',
+        threadSummaries: summaries,
+        isHistoryOpen: false,
         isEditingLastUser: false,
         clearError: true,
         agentStatusMessage: '同じ実行が繰り返されたため、新しい会話で続けます',
@@ -4185,7 +4295,7 @@ $avoid$guidance
     required String status,
   }) async {
     if (!_shouldAskVerifyReport(decision, result)) return false;
-    if (!state.localLlm.isCodingUsable || state.thread == null) return false;
+    if (!state.isAgentLlmUsable || state.thread == null) return false;
     if (emit.isDone) return true;
     emit(
       state.copyWith(
@@ -4275,6 +4385,22 @@ $avoid$guidance
       ],
       updatedAt: DateTime.now(),
     );
+    try {
+      await _repository.saveThread(next);
+    } catch (e) {
+      if (!emit.isDone) {
+        emit(
+          state.copyWith(
+            isGenerating: false,
+            localLlm: localLlm,
+            errorMessage: '検証結果を保存できませんでした: $e',
+            agentStatusMessage: status,
+          ),
+        );
+      }
+      return;
+    }
+    final summaries = await _repository.listSummaries();
     final used = _estimateUsedTokens(
       messages: next.messages,
       draft: state.draft,
@@ -4291,6 +4417,7 @@ $avoid$guidance
           isGenerating: false,
           streamingText: '',
           thread: next,
+          threadSummaries: summaries,
           localLlm: localLlm,
           usedTokens: used,
           warningLevel: warn,
@@ -4512,6 +4639,7 @@ $avoid$guidance
         pendingPatches: pending,
         updatedAt: DateTime.now(),
       );
+      if (thread != null) await _repository.saveThread(thread);
       if (auto) {
         _updatesAppliedThisCycle++;
         _updatesAppliedThisSet++;
@@ -4711,6 +4839,7 @@ $avoid$guidance
         pendingPatches: pending,
         updatedAt: DateTime.now(),
       );
+      if (thread != null) await _repository.saveThread(thread);
       if (auto && !workingPatch.isAddFile) {
         _updatesAppliedThisCycle++;
         _updatesAppliedThisSet++;
@@ -4742,6 +4871,7 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
+    if (thread != null) await _repository.saveThread(thread);
     emit(state.copyWith(pendingPatches: pending, thread: thread));
   }
 
@@ -4758,6 +4888,7 @@ $avoid$guidance
       pendingPatches: pending,
       updatedAt: DateTime.now(),
     );
+    if (thread != null) await _repository.saveThread(thread);
     emit(state.copyWith(pendingPatches: pending, thread: thread));
   }
 
@@ -4795,6 +4926,8 @@ $avoid$guidance
       messages: const [],
       updatedAt: DateTime.now(),
     );
+    await _repository.saveThread(thread);
+    final summaries = await _repository.listSummaries();
     final used = _estimateUsedTokens(
       messages: const [],
       draft: '',
@@ -4809,6 +4942,8 @@ $avoid$guidance
         draft: '',
         bumpDraftEpoch: true,
         streamingText: '',
+        threadSummaries: summaries,
+        isHistoryOpen: false,
         isEditingLastUser: false,
         clearAttachedSelection: true,
         clearAttachedOpenFiles: true,
@@ -4819,6 +4954,129 @@ $avoid$guidance
         agentStatusMessage: '新しい会話',
       ),
     );
+  }
+
+  Future<void> _onHistoryOpen(
+    CodingAssistHistoryOpenRequested event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    try {
+      final summaries = await _repository.listSummaries();
+      emit(
+        state.copyWith(
+          isHistoryOpen: true,
+          threadSummaries: summaries,
+          clearError: true,
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: '履歴の読込に失敗: $e'));
+    }
+  }
+
+  void _onHistoryClose(
+    CodingAssistHistoryCloseRequested event,
+    Emitter<CodingAssistState> emit,
+  ) {
+    emit(state.copyWith(isHistoryOpen: false));
+  }
+
+  Future<void> _onOpenThread(
+    CodingAssistOpenThreadRequested event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    try {
+      final thread = await _repository.loadThread(event.threadId);
+      if (thread == null) {
+        emit(state.copyWith(errorMessage: '会話が見つかりません'));
+        return;
+      }
+      final pending = thread.pendingPatches
+          .where((p) => p.status != CodingPatchStatus.rejected)
+          .toList();
+      final used = _estimateUsedTokens(
+        messages: thread.messages,
+        draft: state.draft,
+        thread: thread,
+        clearAttached: true,
+        clearAttachedOpenFiles: true,
+        clearAttachedFolderStructures: true,
+      );
+      var warn = _warningFor(used);
+      if (thread.compactedSummary != null &&
+          warn != CodingContextWarningLevel.block) {
+        warn = CodingContextWarningLevel.compacted;
+      }
+      emit(
+        state.copyWith(
+          thread: thread,
+          pendingPatches: pending,
+          isHistoryOpen: false,
+          isEditingLastUser: false,
+          streamingText: '',
+          clearAttachedSelection: true,
+          clearAttachedOpenFiles: true,
+          clearAttachedFolderStructures: true,
+          clearAppliedPromptActions: true,
+          usedTokens: used,
+          warningLevel: warn,
+          agentStatusMessage: '履歴を開きました',
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: '会話の読込に失敗: $e'));
+    }
+  }
+
+  Future<void> _onDeleteThread(
+    CodingAssistDeleteThreadRequested event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    try {
+      await _repository.deleteThread(event.threadId);
+      final summaries = await _repository.listSummaries();
+      final deletingCurrent = state.thread?.id == event.threadId;
+      if (deletingCurrent) {
+        final root = state.workspaceRoot;
+        if (root == null) {
+          emit(
+            state.copyWith(
+              threadSummaries: summaries,
+              clearThread: true,
+              pendingPatches: const [],
+            ),
+          );
+          return;
+        }
+        final thread = CodingThread(
+          id: const Uuid().v4(),
+          title: CodingThread.placeholderTitle,
+          workspaceRootPath: root,
+          messages: const [],
+          updatedAt: DateTime.now(),
+        );
+        await _repository.saveThread(thread);
+        final nextSummaries = await _repository.listSummaries();
+        emit(
+          state.copyWith(
+            thread: thread,
+            pendingPatches: const [],
+            draft: '',
+            streamingText: '',
+            threadSummaries: nextSummaries,
+            clearAttachedSelection: true,
+            clearAttachedOpenFiles: true,
+            clearAttachedFolderStructures: true,
+            clearAppliedPromptActions: true,
+            agentStatusMessage: '会話を削除しました',
+          ),
+        );
+        return;
+      }
+      emit(state.copyWith(threadSummaries: summaries));
+    } catch (e) {
+      emit(state.copyWith(errorMessage: '削除に失敗: $e'));
+    }
   }
 
   void _onSelectionAttached(
@@ -5128,28 +5386,38 @@ $avoid$guidance
       updatedAt: DateTime.now(),
     );
     final draft = state.isEditingLastUser ? '' : state.draft;
-    emit(
-      state.copyWith(
-        thread: trimmed,
-        pendingPatches: const [],
-        draft: draft,
-        bumpDraftEpoch: state.isEditingLastUser,
-        isEditingLastUser: false,
-        streamingText: '',
-        usedTokens: _estimateUsedTokens(
-          messages: trimmed.messages,
+    try {
+      await _repository.saveThread(trimmed);
+      final summaries = await _repository.listSummaries();
+      emit(
+        state.copyWith(
+          thread: trimmed,
+          pendingPatches: const [],
           draft: draft,
+          bumpDraftEpoch: state.isEditingLastUser,
+          isEditingLastUser: false,
+          streamingText: '',
+          threadSummaries: summaries,
+          usedTokens: _estimateUsedTokens(
+            messages: trimmed.messages,
+            draft: draft,
+          ),
+          agentStatusMessage: 'とりけししました',
+          clearError: true,
         ),
-        agentStatusMessage: 'とりけししました',
-        clearError: true,
-      ),
-    );
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'とりけしの保存に失敗: $e'));
+    }
   }
 
   Future<void> _onCodingModelChanged(
     CodingAssistCodingModelChanged event,
     Emitter<CodingAssistState> emit,
   ) async {
+    if (state.codingBackend == CodingLlmBackend.strata) {
+      return;
+    }
     var busy = false;
     try {
       final settings = await _getConnectionSettings();
@@ -5212,6 +5480,7 @@ $avoid$guidance
     CodingAssistCodingThinkingChanged event,
     Emitter<CodingAssistState> emit,
   ) async {
+    if (state.codingBackend == CodingLlmBackend.strata) return;
     if (state.isGenerating || state.isLlmBusy) return;
     try {
       final settings = await _getConnectionSettings();
@@ -5247,6 +5516,30 @@ $avoid$guidance
       );
     } catch (e) {
       emit(state.copyWith(isLlmBusy: false, errorMessage: '思考モード変更失敗: $e'));
+    }
+  }
+
+  /// Strata の思考段階。設定のみ更新し、サーバ再起動はしない。
+  Future<void> _onStrataThinkingEffortChanged(
+    CodingAssistStrataThinkingEffortChanged event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    if (state.codingBackend != CodingLlmBackend.strata) return;
+    if (state.isGenerating || state.isLlmBusy) return;
+    try {
+      final settings = await _getConnectionSettings();
+      if (settings.strata.thinkingEffort == event.effort) return;
+      final strata = settings.strata.copyWith(thinkingEffort: event.effort);
+      await _saveConnectionSettings(settings.copyWith(strata: strata));
+      emit(
+        state.copyWith(
+          strata: strata,
+          agentStatusMessage: 'Strata 思考: ${event.effort.label}',
+          clearError: true,
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'Strata 思考段階の変更に失敗: $e'));
     }
   }
 
@@ -5296,15 +5589,20 @@ $avoid$guidance
       warn = CodingContextWarningLevel.compacted;
     }
     final saved = compacted.copyWith(contextWarningLevel: warn);
-    emit(
-      state.copyWith(
-        thread: saved,
-        usedTokens: used,
-        warningLevel: warn,
-        agentStatusMessage: 'コンテキストを圧縮しました',
-        clearError: true,
-      ),
-    );
+    try {
+      await _repository.saveThread(saved);
+      emit(
+        state.copyWith(
+          thread: saved,
+          usedTokens: used,
+          warningLevel: warn,
+          agentStatusMessage: 'コンテキストを圧縮しました',
+          clearError: true,
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: '圧縮の保存に失敗: $e'));
+    }
   }
 
   void _onErrorConsumed(

@@ -421,10 +421,17 @@ class LocalLlmServerLauncher {
     } catch (_) {}
 
     if (ownedPid != null) {
+      // 子プロセス（Metal ワーカー等）も止めてメモリを返す
+      try {
+        await Process.run('pkill', <String>['-TERM', '-P', '$ownedPid']);
+      } catch (_) {}
       try {
         Process.killPid(ownedPid, ProcessSignal.sigterm);
       } catch (_) {}
-      await Future<void>.delayed(const Duration(milliseconds: 600));
+      await Future<void>.delayed(const Duration(milliseconds: 800));
+      try {
+        await Process.run('pkill', <String>['-KILL', '-P', '$ownedPid']);
+      } catch (_) {}
       try {
         Process.killPid(ownedPid, ProcessSignal.sigkill);
       } catch (_) {}

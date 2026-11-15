@@ -1,8 +1,10 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../domain/entities/coding_llm_backend.dart';
 import '../../domain/entities/connection_settings.dart';
 import '../../domain/entities/generative_ai_provider.dart';
 import '../../domain/entities/local_llm_connection_settings.dart';
+import '../../domain/entities/strata_connection_settings.dart';
 
 /// 接続設定のローカル永続化。
 class ApiSettingsLocalDataSource {
@@ -38,6 +40,14 @@ class ApiSettingsLocalDataSource {
       'local_llm_coding_auto_apply_patches';
   static const _prefLocalLlmEnabled = 'local_llm_enabled';
   static const _prefDartSdkPath = 'dart_sdk_path';
+  static const _prefCodingBackend = 'coding_llm_backend';
+  static const _prefStrataHost = 'strata_host';
+  static const _prefStrataPort = 'strata_port';
+  static const _prefStrataEnabled = 'strata_enabled';
+  static const _prefStrataCliPath = 'strata_cli_path';
+  static const _prefStrataRunConfig = 'strata_run_config_path';
+  static const _prefStrataModelId = 'strata_model_id';
+  static const _prefStrataThinkingEffort = 'strata_thinking_effort';
 
   Future<ConnectionSettings> load() async {
     const provider = GenerativeAiProvider.localLlm;
@@ -79,8 +89,22 @@ class ApiSettingsLocalDataSource {
       legacyThinkingEnabled: localThinking,
     );
 
+    final strata = StrataConnectionSettings.fromStored(
+      host: _preferences.getString(_prefStrataHost),
+      port: _preferences.getInt(_prefStrataPort),
+      enabled: _preferences.getBool(_prefStrataEnabled),
+      cliPath: _preferences.getString(_prefStrataCliPath),
+      runConfigPath: _preferences.getString(_prefStrataRunConfig),
+      modelId: _preferences.getString(_prefStrataModelId),
+      thinkingEffort: _preferences.getString(_prefStrataThinkingEffort),
+    );
+
     return ConnectionSettings(
       localLlm: localLlm,
+      strata: strata,
+      codingBackend: CodingLlmBackend.fromStorage(
+        _preferences.getString(_prefCodingBackend),
+      ),
       provider: provider,
       dartSdkPath: _preferences.getString(_prefDartSdkPath) ?? '',
     );
@@ -135,6 +159,32 @@ class ApiSettingsLocalDataSource {
     await _preferences.setBool(
       _prefLocalLlmEnabled,
       settings.localLlm.enabled,
+    );
+    await _preferences.setString(
+      _prefCodingBackend,
+      settings.codingBackend.storageValue,
+    );
+    await _preferences.setString(
+      _prefStrataHost,
+      settings.strata.host.trim(),
+    );
+    await _preferences.setInt(_prefStrataPort, settings.strata.port);
+    await _preferences.setBool(_prefStrataEnabled, settings.strata.enabled);
+    await _preferences.setString(
+      _prefStrataCliPath,
+      settings.strata.cliPath.trim(),
+    );
+    await _preferences.setString(
+      _prefStrataRunConfig,
+      settings.strata.runConfigPath.trim(),
+    );
+    await _preferences.setString(
+      _prefStrataModelId,
+      settings.strata.modelId.trim(),
+    );
+    await _preferences.setString(
+      _prefStrataThinkingEffort,
+      settings.strata.thinkingEffort.storageValue,
     );
     await _preferences.setString(
       _prefDartSdkPath,

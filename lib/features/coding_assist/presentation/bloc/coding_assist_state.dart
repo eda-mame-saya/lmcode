@@ -1,7 +1,9 @@
 import 'package:equatable/equatable.dart';
 import 'package:intl/intl.dart';
 
+import '../../../api_settings/domain/entities/coding_llm_backend.dart';
 import '../../../api_settings/domain/entities/local_llm_connection_settings.dart';
+import '../../../api_settings/domain/entities/strata_connection_settings.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../domain/coding_novel_settings.dart';
@@ -16,8 +18,12 @@ final class CodingAssistState extends Equatable {
     this.isLoading = true,
     this.isLlmBusy = false,
     this.isGenerating = false,
+    this.isHistoryOpen = false,
     this.isEditingLastUser = false,
     this.localLlm = const LocalLlmConnectionSettings(),
+    this.strata = const StrataConnectionSettings(),
+    this.codingBackend = CodingLlmBackend.llamaCpp,
+    this.strataContextSize,
     this.uiFontSizes = CodingUiFontSizes.defaults,
     this.harness = CodingHarnessSettings.defaults,
     this.autoSleepSettings = const CodingAutoSleepSettings(),
@@ -30,6 +36,7 @@ final class CodingAssistState extends Equatable {
     this.appliedPromptActions = const [],
     this.recentWorkspaces = const [],
     this.folderExpansion,
+    this.threadSummaries = const [],
     this.workspaceRoot,
     this.gitBranch,
     this.index,
@@ -60,8 +67,18 @@ final class CodingAssistState extends Equatable {
   final bool isLoading;
   final bool isLlmBusy;
   final bool isGenerating;
+  final bool isHistoryOpen;
   final bool isEditingLastUser;
   final LocalLlmConnectionSettings localLlm;
+
+  /// Strata 接続（既定ポート 8090）。
+  final StrataConnectionSettings strata;
+
+  /// Agent が使う推論バックエンド。
+  final CodingLlmBackend codingBackend;
+
+  /// Strata run config の `--max-context`（未解決なら null → 既定値）。
+  final int? strataContextSize;
 
   /// メニュー／エディタ／Agent の表示フォントサイズ。
   final CodingUiFontSizes uiFontSizes;
@@ -96,6 +113,7 @@ final class CodingAssistState extends Equatable {
 
   /// 開いているワークスペースのフォルダ展開記録。null は未記録（既定展開）。
   final Map<String, bool>? folderExpansion;
+  final List<CodingThreadSummary> threadSummaries;
   final String? workspaceRoot;
 
   /// git があるときのみブランチ名（なければ null）。
@@ -149,7 +167,43 @@ final class CodingAssistState extends Equatable {
 
   List<CodingChatMessage> get messages => thread?.messages ?? const [];
 
-  int get contextSize => localLlm.codingContextSize;
+  int get contextSize => switch (codingBackend) {
+        CodingLlmBackend.llamaCpp => localLlm.codingContextSize,
+        CodingLlmBackend.strata =>
+          (strataContextSize != null && strataContextSize! > 0)
+              ? strataContextSize!
+              : StrataPresets.defaultContextSize,
+      };
+
+  /// 選択中バックエンドで Agent 送信可能か。
+  /// Strata は Agent 選択時にサイドカーを起動するため、enabled ではなく接続先の有無で判定する。
+  bool get isAgentLlmUsable => switch (codingBackend) {
+        CodingLlmBackend.llamaCpp => localLlm.isCodingUsable,
+        CodingLlmBackend.strata => strata.hasEndpoint,
+      };
+
+  /// Agent 送信用の OpenAI 互換設定。
+  LocalLlmConnectionSettings agentChatSettings({String? strataModelId}) {
+    return switch (codingBackend) {
+      CodingLlmBackend.llamaCpp => localLlm.forServer(),
+      CodingLlmBackend.strata => strata.toChatClientSettings(
+          resolvedModelId: strataModelId,
+          contextSize: strataContextSize,
+        ),
+    };
+  }
+
+  /// ツールバー／ステータスバー用のモデル表示名。
+  String agentModelLabel({String? strataModelId}) {
+    return switch (codingBackend) {
+      CodingLlmBackend.llamaCpp => localLlm.resolvedCodingModelLabel,
+      CodingLlmBackend.strata => () {
+          final id = (strataModelId ?? strata.modelId).trim();
+          if (id.isNotEmpty) return 'Strata: $id';
+          return 'Strata（${strata.baseUrl}）';
+        }(),
+    };
+  }
 
   // String get contextUsageLabel => '$usedTokens / $contextSize';
   String get contextUsageLabel {
@@ -193,12 +247,26 @@ final class CodingAssistState extends Equatable {
     return null;
   }
 
+  /// 現在ワークスペースに紐づく履歴のみ。
+  List<CodingThreadSummary> get workspaceThreadSummaries {
+    final root = workspaceRoot;
+    if (root == null) return const [];
+    return threadSummaries
+        .where((s) => s.workspaceRootPath == root)
+        .toList(growable: false);
+  }
+
   CodingAssistState copyWith({
     bool? isLoading,
     bool? isLlmBusy,
     bool? isGenerating,
+    bool? isHistoryOpen,
     bool? isEditingLastUser,
     LocalLlmConnectionSettings? localLlm,
+    StrataConnectionSettings? strata,
+    CodingLlmBackend? codingBackend,
+    int? strataContextSize,
+    bool clearStrataContextSize = false,
     CodingUiFontSizes? uiFontSizes,
     CodingHarnessSettings? harness,
     CodingAutoSleepSettings? autoSleepSettings,
@@ -215,6 +283,7 @@ final class CodingAssistState extends Equatable {
     List<String>? recentWorkspaces,
     Map<String, bool>? folderExpansion,
     bool clearFolderExpansion = false,
+    List<CodingThreadSummary>? threadSummaries,
     String? workspaceRoot,
     String? gitBranch,
     CodingWorkspaceIndex? index,
@@ -262,8 +331,14 @@ final class CodingAssistState extends Equatable {
       isLoading: isLoading ?? this.isLoading,
       isLlmBusy: isLlmBusy ?? this.isLlmBusy,
       isGenerating: isGenerating ?? this.isGenerating,
+      isHistoryOpen: isHistoryOpen ?? this.isHistoryOpen,
       isEditingLastUser: isEditingLastUser ?? this.isEditingLastUser,
       localLlm: localLlm ?? this.localLlm,
+      strata: strata ?? this.strata,
+      codingBackend: codingBackend ?? this.codingBackend,
+      strataContextSize: clearStrataContextSize
+          ? null
+          : (strataContextSize ?? this.strataContextSize),
       uiFontSizes: uiFontSizes ?? this.uiFontSizes,
       harness: harness ?? this.harness,
       autoSleepSettings: autoSleepSettings ?? this.autoSleepSettings,
@@ -284,6 +359,7 @@ final class CodingAssistState extends Equatable {
       folderExpansion: clearFolderExpansion
           ? null
           : (folderExpansion ?? this.folderExpansion),
+      threadSummaries: threadSummaries ?? this.threadSummaries,
       workspaceRoot: clearWorkspace
           ? null
           : (workspaceRoot ?? this.workspaceRoot),
@@ -347,6 +423,7 @@ final class CodingAssistState extends Equatable {
     isLoading,
     isLlmBusy,
     isGenerating,
+    isHistoryOpen,
     isEditingLastUser,
     localLlm.codingCustomModelId,
     localLlm.codingCustomGgufFileName,
@@ -355,6 +432,13 @@ final class CodingAssistState extends Equatable {
     localLlm.codingThinkingEnabled,
     localLlm.codingAutoApplyPatches,
     localLlm.enabled,
+    strata.host,
+    strata.port,
+    strata.enabled,
+    strata.modelId,
+    strata.thinkingEffort,
+    codingBackend,
+    strataContextSize,
     uiFontSizes,
     autoSleepSettings,
     autoSleepArmed,
@@ -366,6 +450,7 @@ final class CodingAssistState extends Equatable {
     appliedPromptActions,
     recentWorkspaces,
     _folderExpansionProp(folderExpansion),
+    threadSummaries.map((s) => '${s.id}:${s.updatedAt.toIso8601String()}'),
     workspaceRoot,
     gitBranch,
     index?.rootPath,

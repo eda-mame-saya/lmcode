@@ -100,7 +100,7 @@ void main() {
       expect(spans[0], isA<CodingNovelPlainSpan>());
       expect(spans[1], isA<CodingNovelRubySpan>());
       final ruby = spans[1] as CodingNovelRubySpan;
-      expect(ruby.base, '漢字');
+      expect(ruby.baseString, '漢字');
       expect(ruby.ruby, 'かんじ');
     });
   });

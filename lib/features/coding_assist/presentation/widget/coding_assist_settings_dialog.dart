@@ -252,17 +252,53 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
                 ),
                 const Divider(),
                 const _SettingsSectionTitle('Agent'),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('思考'),
-                  subtitle: const Text('切替時は llama-server を再起動します'),
-                  value: state.localLlm.codingThinkingEnabled,
-                  onChanged: busy
-                      ? null
-                      : (v) => context.read<CodingAssistBloc>().add(
-                          CodingAssistCodingThinkingChanged(v),
-                        ),
-                ),
+                if (state.codingBackend == CodingLlmBackend.strata)
+                  InputDecorator(
+                    decoration: const InputDecoration(
+                      labelText: '思考（Strata）',
+                      helperText:
+                          'リクエストの reasoning_effort。切替だけで次の送信から反映（再起動不要）',
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<StrataThinkingEffort>(
+                        value: state.strata.thinkingEffort,
+                        isExpanded: true,
+                        items: [
+                          for (final effort in StrataThinkingEffort.values)
+                            DropdownMenuItem(
+                              value: effort,
+                              child: Text(
+                                '${effort.label} — ${effort.subtitle}',
+                              ),
+                            ),
+                        ],
+                        onChanged: busy
+                            ? null
+                            : (value) {
+                                if (value == null) return;
+                                context.read<CodingAssistBloc>().add(
+                                  CodingAssistStrataThinkingEffortChanged(
+                                    value,
+                                  ),
+                                );
+                              },
+                      ),
+                    ),
+                  )
+                else
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('思考'),
+                    subtitle: const Text('切替時は llama-server を再起動します'),
+                    value: state.localLlm.codingThinkingEnabled,
+                    onChanged: busy
+                        ? null
+                        : (v) => context.read<CodingAssistBloc>().add(
+                            CodingAssistCodingThinkingChanged(v),
+                          ),
+                  ),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,
                   title: const Text('自動実行'),

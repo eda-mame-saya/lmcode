@@ -1,3 +1,4 @@
+import '../../domain/entities/coding_assist_entities.dart';
 import '../../domain/repositories/coding_assist_repository.dart';
 import '../datasources/coding_assist_local_datasource.dart';
 
@@ -9,8 +10,28 @@ class CodingAssistRepositoryImpl implements CodingAssistRepository {
   final CodingAssistLocalDataSource _local;
 
   @override
+  Future<List<CodingThreadSummary>> listSummaries() {
+    return _local.listSummaries();
+  }
+
+  @override
   Future<List<String>> listRecentWorkspaces() {
     return _local.listRecentWorkspaces();
+  }
+
+  @override
+  Future<CodingThread?> loadThread(String id) {
+    return _local.loadThread(id);
+  }
+
+  @override
+  Future<void> saveThread(CodingThread thread) {
+    return _local.saveThread(thread);
+  }
+
+  @override
+  Future<void> deleteThread(String id) {
+    return _local.deleteThread(id);
   }
 
   @override

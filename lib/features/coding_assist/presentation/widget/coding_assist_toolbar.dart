@@ -20,8 +20,9 @@ class _Toolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final llm = state.localLlm;
+    final strataMode = state.codingBackend == CodingLlmBackend.strata;
     String? value;
-    if (llm.usesCustomCodingModel) {
+    if (!strataMode && llm.usesCustomCodingModel) {
       final id = llm.codingCustomModelId?.trim() ?? '';
       final file = llm.codingCustomGgufFileName?.trim() ?? '';
       if (GemmaMtpDraft.isDraftFileName(file)) {
@@ -101,50 +102,72 @@ class _Toolbar extends StatelessWidget {
           const SizedBox(width: 8),
           SizedBox(
             width: 300,
-            child: DropdownButtonFormField<String>(
-              // ignore: deprecated_member_use
-              value: value,
-              isDense: true,
-              hint: Text(
-                customModels.isEmpty
-                    ? 'モデルを追加（設定）'
-                    : LocalLlmPresets.unsetModelLabel,
-              ),
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 8,
-                ),
-              ),
-              items: [
-                for (final m in customModels)
-                  if (!GemmaMtpDraft.isDraftFileName(m.ggufFileName))
-                    DropdownMenuItem(
-                      value: 'custom:${m.id}',
-                      child: Text(m.label),
+            child: strataMode
+                ? Tooltip(
+                    message: 'Strata 利用中のためモデル変更は無効です（エンジン設定で切替）',
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
+                      ),
+                      child: Text(
+                        state.agentModelLabel(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Theme.of(context).disabledColor,
+                        ),
+                      ),
                     ),
-              ],
-              onChanged:
-                  state.isGenerating ||
-                      state.isLlmBusy ||
+                  )
+                : DropdownButtonFormField<String>(
+                    // ignore: deprecated_member_use
+                    value: value,
+                    isDense: true,
+                    hint: Text(
                       customModels.isEmpty
-                  ? null
-                  : (key) {
-                      if (key == null || key == value) return;
-                      if (!key.startsWith('custom:')) return;
-                      final id = key.substring('custom:'.length);
-                      final m = customModels
-                          .where((e) => e.id == id)
-                          .firstOrNull;
-                      if (m != null) {
-                        context.read<CodingAssistBloc>().add(
-                          CodingAssistCodingModelChanged(m),
-                        );
-                      }
-                    },
-            ),
+                          ? 'モデルを追加（設定）'
+                          : LocalLlmPresets.unsetModelLabel,
+                    ),
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                    ),
+                    items: [
+                      for (final m in customModels)
+                        if (!GemmaMtpDraft.isDraftFileName(m.ggufFileName))
+                          DropdownMenuItem(
+                            value: 'custom:${m.id}',
+                            child: Text(m.label),
+                          ),
+                    ],
+                    onChanged:
+                        state.isGenerating ||
+                            state.isLlmBusy ||
+                            customModels.isEmpty
+                        ? null
+                        : (key) {
+                            if (key == null || key == value) return;
+                            if (!key.startsWith('custom:')) return;
+                            final id = key.substring('custom:'.length);
+                            final m = customModels
+                                .where((e) => e.id == id)
+                                .firstOrNull;
+                            if (m != null) {
+                              context.read<CodingAssistBloc>().add(
+                                CodingAssistCodingModelChanged(m),
+                              );
+                            }
+                          },
+                  ),
           ),
           const SizedBox(width: 4),
           IconButton(

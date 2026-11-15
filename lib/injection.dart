@@ -16,8 +16,10 @@ import 'features/drive/data/datasources/local_workspace_datasource.dart';
 import 'features/drive/data/repositories/drive_repository_impl.dart';
 import 'features/drive/domain/repositories/drive_repository.dart';
 import 'features/generative_ai/data/ai_debug_log_store.dart';
+import 'features/generative_ai/data/coding_llm_sidecar_coordinator.dart';
 import 'features/generative_ai/data/local_llm_client.dart';
 import 'features/generative_ai/data/local_llm_server_launcher.dart';
+import 'features/generative_ai/data/strata_server_launcher.dart';
 import 'features/coding_assist/data/datasources/coding_assist_local_datasource.dart';
 import 'features/coding_assist/data/datasources/coding_custom_prompts_local_datasource.dart';
 import 'features/coding_assist/data/datasources/coding_ui_settings_local_datasource.dart';
@@ -80,6 +82,14 @@ Future<void> configureDependencies() async {
     () => LocalLlmClient(debugLog: getIt()),
   );
   getIt.registerLazySingleton(LocalLlmServerLauncher.new);
+  getIt.registerLazySingleton(StrataServerLauncher.new);
+  getIt.registerLazySingleton(
+    () => CodingLlmSidecarCoordinator(
+      localLlmClient: getIt(),
+      localLlmServerLauncher: getIt(),
+      strataServerLauncher: getIt(),
+    ),
+  );
 
   getIt.registerFactory(
     () => ApiSettingsBloc(
@@ -87,6 +97,8 @@ Future<void> configureDependencies() async {
       saveConnectionSettings: getIt(),
       localLlmClient: getIt(),
       localLlmServerLauncher: getIt(),
+      strataServerLauncher: getIt(),
+      sidecarCoordinator: getIt(),
     ),
   );
 
@@ -108,6 +120,8 @@ Future<void> configureDependencies() async {
       saveConnectionSettings: getIt(),
       localLlmClient: getIt(),
       localLlmServerLauncher: getIt(),
+      strataServerLauncher: getIt(),
+      sidecarCoordinator: getIt(),
       uiSettingsLocalDataSource: getIt(),
     ),
   );

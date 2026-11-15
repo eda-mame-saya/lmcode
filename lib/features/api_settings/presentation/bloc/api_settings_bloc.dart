@@ -1,11 +1,15 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../generative_ai/data/coding_llm_sidecar_coordinator.dart';
 import '../../../generative_ai/data/local_llm_client.dart';
 import '../../../generative_ai/data/local_llm_server_launcher.dart';
+import '../../../generative_ai/data/strata_server_launcher.dart';
+import '../../domain/entities/coding_llm_backend.dart';
 import '../../domain/entities/generative_ai_provider.dart';
 import '../../domain/entities/local_endpoint.dart';
 import '../../domain/entities/local_llm_connection_settings.dart';
+import '../../domain/entities/strata_connection_settings.dart';
 import '../../domain/usecases/get_connection_settings.dart';
 import '../../domain/usecases/save_connection_settings.dart';
 import 'api_settings_event.dart';
@@ -18,10 +22,14 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     required SaveConnectionSettings saveConnectionSettings,
     required LocalLlmClient localLlmClient,
     required LocalLlmServerLauncher localLlmServerLauncher,
+    required StrataServerLauncher strataServerLauncher,
+    required CodingLlmSidecarCoordinator sidecarCoordinator,
   })  : _getConnectionSettings = getConnectionSettings,
         _saveConnectionSettings = saveConnectionSettings,
         _localLlmClient = localLlmClient,
         _localLlmServerLauncher = localLlmServerLauncher,
+        _strataServerLauncher = strataServerLauncher,
+        _sidecarCoordinator = sidecarCoordinator,
         super(const ApiSettingsState()) {
     on<ApiSettingsStarted>(_onStarted);
     on<ApiSettingsIntervalChanged>(_onIntervalChanged);
@@ -34,6 +42,13 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     );
     on<ApiSettingsLocalLlmCodingContextChanged>(_onLocalLlmCodingContextChanged);
     on<ApiSettingsDartSdkPathChanged>(_onDartSdkPathChanged);
+    on<ApiSettingsCodingBackendChanged>(_onCodingBackendChanged);
+    on<ApiSettingsStrataEnabledChanged>(_onStrataEnabledChanged);
+    on<ApiSettingsStrataHostChanged>(_onStrataHostChanged);
+    on<ApiSettingsStrataPortChanged>(_onStrataPortChanged);
+    on<ApiSettingsStrataCliPathChanged>(_onStrataCliPathChanged);
+    on<ApiSettingsStrataRunConfigPathChanged>(_onStrataRunConfigPathChanged);
+    on<ApiSettingsStrataModelIdChanged>(_onStrataModelIdChanged);
     on<ApiSettingsSaveRequested>(_onSaveRequested);
     on<ApiSettingsConnectionTestRequested>(_onConnectionTestRequested);
     on<ApiSettingsSaveMessageConsumed>(_onSaveMessageConsumed);
@@ -43,9 +58,12 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
   final SaveConnectionSettings _saveConnectionSettings;
   final LocalLlmClient _localLlmClient;
   final LocalLlmServerLauncher _localLlmServerLauncher;
+  final StrataServerLauncher _strataServerLauncher;
+  final CodingLlmSidecarCoordinator _sidecarCoordinator;
 
   /// 画面オープン時／前回保存時のローカル LLM 設定（再起動差分検出用）。
   LocalLlmConnectionSettings? _persistedLocalLlm;
+  StrataConnectionSettings? _persistedStrata;
 
   Future<void> _onStarted(
     ApiSettingsStarted event,
@@ -54,20 +72,33 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     emit(state.copyWith(isLoading: true, clearLocalLlmConnectionError: true));
     final settings = await _getConnectionSettings();
     _persistedLocalLlm = settings.localLlm;
+    _persistedStrata = settings.strata;
     final modelPath =
         await _localLlmServerLauncher.resolveModelPathForSettings(
           settings.localLlm.forServer(),
         );
+    final strataCli = await _strataServerLauncher.resolveCliPathForSettings(
+      settings.strata,
+    );
+    final strataConfig =
+        await _strataServerLauncher.resolveRunConfigForSettings(
+      settings.strata,
+    );
     emit(
       state.copyWith(
         isLoading: false,
         settings: settings,
         localLlmPortText: '${settings.localLlm.port}',
+        strataPortText: '${settings.strata.port}',
         modelResolvedPath: modelPath,
         clearModelResolvedPath: modelPath == null,
         modelFileMissing: settings.localLlm.enabled &&
             settings.localLlm.usesCustomCodingModel &&
             modelPath == null,
+        strataCliPathResolved: strataCli,
+        clearStrataCliPathResolved: strataCli == null,
+        strataRunConfigResolved: strataConfig,
+        clearStrataRunConfigResolved: strataConfig == null,
       ),
     );
   }
@@ -203,6 +234,123 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     );
   }
 
+  void _onCodingBackendChanged(
+    ApiSettingsCodingBackendChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) {
+    var next = state.settings.copyWith(codingBackend: event.backend);
+    // Agent を Strata にしたら Strata を ON に揃える（OFF のまま「未設定」になるのを防ぐ）
+    if (event.backend == CodingLlmBackend.strata) {
+      next = next.copyWith(
+        strata: next.strata.copyWith(enabled: true),
+      );
+    }
+    emit(state.copyWith(settings: next));
+  }
+
+  Future<void> _onStrataEnabledChanged(
+    ApiSettingsStrataEnabledChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) async {
+    final next = state.settings.strata.copyWith(enabled: event.value);
+    final strataCli =
+        await _strataServerLauncher.resolveCliPathForSettings(next);
+    final strataConfig =
+        await _strataServerLauncher.resolveRunConfigForSettings(next);
+    emit(
+      state.copyWith(
+        settings: state.settings.copyWith(strata: next),
+        clearStrataHostError: true,
+        clearStrataPortError: true,
+        strataCliPathResolved: strataCli,
+        clearStrataCliPathResolved: strataCli == null,
+        strataRunConfigResolved: strataConfig,
+        clearStrataRunConfigResolved: strataConfig == null,
+      ),
+    );
+  }
+
+  void _onStrataHostChanged(
+    ApiSettingsStrataHostChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) {
+    emit(
+      state.copyWith(
+        settings: state.settings.copyWith(
+          strata: state.settings.strata.copyWith(host: event.value),
+        ),
+        clearStrataHostError: true,
+      ),
+    );
+  }
+
+  void _onStrataPortChanged(
+    ApiSettingsStrataPortChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) {
+    final port = LocalEndpoint.parsePort(event.value);
+    emit(
+      state.copyWith(
+        strataPortText: event.value,
+        settings: port == null
+            ? state.settings
+            : state.settings.copyWith(
+                strata: state.settings.strata.copyWith(port: port),
+              ),
+        clearStrataPortError: true,
+      ),
+    );
+  }
+
+  Future<void> _onStrataCliPathChanged(
+    ApiSettingsStrataCliPathChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) async {
+    final next = state.settings.strata.copyWith(cliPath: event.value);
+    final strataCli =
+        await _strataServerLauncher.resolveCliPathForSettings(next);
+    final strataConfig =
+        await _strataServerLauncher.resolveRunConfigForSettings(next);
+    emit(
+      state.copyWith(
+        settings: state.settings.copyWith(strata: next),
+        strataCliPathResolved: strataCli,
+        clearStrataCliPathResolved: strataCli == null,
+        strataRunConfigResolved: strataConfig,
+        clearStrataRunConfigResolved: strataConfig == null,
+      ),
+    );
+  }
+
+  Future<void> _onStrataRunConfigPathChanged(
+    ApiSettingsStrataRunConfigPathChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) async {
+    final next = state.settings.strata.copyWith(runConfigPath: event.value);
+    final strataConfig =
+        await _strataServerLauncher.resolveRunConfigForSettings(next);
+    emit(
+      state.copyWith(
+        settings: state.settings.copyWith(strata: next),
+        strataRunConfigResolved: strataConfig,
+        clearStrataRunConfigResolved: strataConfig == null,
+      ),
+    );
+  }
+
+  void _onStrataModelIdChanged(
+    ApiSettingsStrataModelIdChanged event,
+    Emitter<ApiSettingsState> emit,
+  ) {
+    emit(
+      state.copyWith(
+        settings: state.settings.copyWith(
+          strata: state.settings.strata.copyWith(modelId: event.value),
+        ),
+      ),
+    );
+  }
+
   Future<void> _onSaveRequested(
     ApiSettingsSaveRequested event,
     Emitter<ApiSettingsState> emit,
@@ -212,13 +360,20 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     final localHost = state.settings.localLlm.host.trim();
     final localPort = LocalEndpoint.parsePort(state.localLlmPortText) ??
         state.settings.localLlm.port;
+    final useStrata =
+        state.settings.codingBackend == CodingLlmBackend.strata;
+    final strataEnabled = useStrata ? true : state.settings.strata.enabled;
+    final strataHost = state.settings.strata.host.trim();
+    final strataPort = LocalEndpoint.parsePort(state.strataPortText) ??
+        state.settings.strata.port;
 
     var hasError = false;
     String? localHostError;
     String? localPortError;
-    String? intervalError;
+    String? strataHostError;
+    String? strataPortError;
 
-    if (provider == GenerativeAiProvider.localLlm && localEnabled) {
+    if (!useStrata && localEnabled) {
       if (localHost.isEmpty) {
         localHostError = '使用する場合はベースURLが必要です';
         hasError = true;
@@ -229,14 +384,38 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
       }
     }
 
+    if (useStrata) {
+      if (strataHost.isEmpty) {
+        strataHostError = '使用する場合はベースURLが必要です';
+        hasError = true;
+      }
+      if (LocalEndpoint.parsePort(state.strataPortText) == null) {
+        strataPortError = '1〜65535 のポートを入力してください';
+        hasError = true;
+      }
+    }
+
+    if (!useStrata &&
+        localEnabled &&
+        strataEnabled &&
+        localPort == strataPort &&
+        _sameListenHost(localHost, strataHost)) {
+      strataPortError =
+          'llama（$localPort）と同じポートです。Strata は別ポートにしてください（既定 ${StrataPresets.defaultPort}）';
+      hasError = true;
+    }
+
     if (hasError) {
       emit(
         state.copyWith(
           localLlmHostError: localHostError,
           localLlmPortError: localPortError,
-          intervalError: intervalError,
+          strataHostError: strataHostError,
+          strataPortError: strataPortError,
           clearLocalLlmHostError: localHostError == null,
           clearLocalLlmPortError: localPortError == null,
+          clearStrataHostError: strataHostError == null,
+          clearStrataPortError: strataPortError == null,
         ),
       );
       return;
@@ -250,6 +429,15 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
         port: localPort,
         enabled: localEnabled,
       ),
+      strata: state.settings.strata.copyWith(
+        host: strataHost.isEmpty ? StrataPresets.defaultHost : strataHost,
+        port: strataPort,
+        enabled: strataEnabled,
+        cliPath: state.settings.strata.cliPath.trim(),
+        runConfigPath: state.settings.strata.runConfigPath.trim(),
+        modelId: state.settings.strata.modelId.trim(),
+      ),
+      codingBackend: state.settings.codingBackend,
       provider: provider,
       dartSdkPath: state.settings.dartSdkPath.trim(),
     );
@@ -268,42 +456,57 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
       return;
     }
 
-    String serverMessage = '保存しました。';
-    try {
-      // 進捗 Snackbar は出さず、画面オーバーレイだけで待機させる
-      // 保存時は会議 AI 用モデルで起動（S13 入場時にチャット用へ切替）。
-      final draftName = await _localLlmServerLauncher.applySettings(
-        settings: toSave.localLlm.forServer(),
-        previous: _persistedLocalLlm?.forServer(),
-        isHealthy: _localLlmClient.isReachable,
-        onStatus: (message) {
-          debugPrint('[LocalLlm] $message');
-        },
-        waitForHealth: true,
+    final messages = <String>['保存しました。'];
+    final sidecar = await _sidecarCoordinator.apply(
+      settings: toSave,
+      previousLocalLlm: _persistedLocalLlm,
+      previousStrata: _persistedStrata,
+      onStatus: (message) {
+        debugPrint('[CodingLlm] $message');
+      },
+      waitForHealth: true,
+    );
+    if (toSave.codingBackend == CodingLlmBackend.strata) {
+      messages.add(
+        sidecar.strataReady
+            ? 'Strata: ${toSave.strata.baseUrl}（llama 停止）'
+            : 'Strata: 起動失敗',
       );
-      serverMessage = !toSave.localLlm.enabled
-          ? '保存しました。ローカル LLM は OFF です。'
-          : draftName == null
-              ? '保存しました。llama-server を反映済みです（${toSave.localLlm.baseUrl}）。'
-              : '保存しました。MTP 下書き係を併用します（$draftName）。';
-    } catch (e) {
-      serverMessage =
-          '設定は保存しましたが、llama-server の起動／再起動に失敗しました: $e';
+    } else if (!toSave.localLlm.enabled) {
+      messages.add('llama-server: OFF（Strata 停止）');
+    } else if (sidecar.llamaDraft == null) {
+      messages.add(
+        sidecar.llamaReady
+            ? 'llama-server: ${toSave.localLlm.baseUrl}（Strata 停止）'
+            : 'llama-server: 起動失敗',
+      );
+    } else {
+      messages.add(
+        'llama-server: ${toSave.localLlm.baseUrl}（MTP ${sidecar.llamaDraft}・Strata 停止）',
+      );
     }
+    if (sidecar.error != null) {
+      messages.add(sidecar.error!);
+    }
+
     _persistedLocalLlm = toSave.localLlm;
+    _persistedStrata = toSave.strata;
 
     emit(
       state.copyWith(
         isSaving: false,
         settings: toSave,
         localLlmPortText: '${toSave.localLlm.port}',
+        strataPortText: '${toSave.strata.port}',
         saveSucceeded: true,
         clearGeminiKeyError: true,
         clearGeminiModelError: true,
         clearLocalLlmHostError: true,
         clearLocalLlmPortError: true,
+        clearStrataHostError: true,
+        clearStrataPortError: true,
         clearIntervalError: true,
-        infoMessage: serverMessage,
+        infoMessage: messages.join(' '),
       ),
     );
   }
@@ -312,19 +515,37 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
     ApiSettingsConnectionTestRequested event,
     Emitter<ApiSettingsState> emit,
   ) async {
-    final String llmMsg;
-    if (state.settings.localLlm.enabled) {
-      final ok = await _localLlmClient.isReachable(state.settings.localLlm);
-      llmMsg = ok
-          ? 'llama-server: OK（${state.settings.localLlm.baseUrl}）'
-          : 'llama-server: 未接続（起動とポート ${state.settings.localLlm.port} を確認）';
+    final parts = <String>[];
+    final agent = state.settings.codingBackend;
+    if (agent == CodingLlmBackend.llamaCpp) {
+      if (state.settings.localLlm.enabled) {
+        final ok = await _localLlmClient.isReachable(state.settings.localLlm);
+        parts.add(
+          ok
+              ? 'llama-server: OK（${state.settings.localLlm.baseUrl}）'
+              : 'llama-server: 未接続（ポート ${state.settings.localLlm.port}）',
+        );
+      } else {
+        parts.add('llama-server: 使用しない');
+      }
+      parts.add('Strata: 停止（Agent が llama.cpp）');
     } else {
-      llmMsg = 'llama-server: 使用しない設定';
+      final ok = await _localLlmClient.isReachable(
+        state.settings.strata.toChatClientSettings(),
+      );
+      parts.add(
+        ok
+            ? 'Strata: OK（${state.settings.strata.baseUrl}）'
+            : 'Strata: 未接続（ポート ${state.settings.strata.port}）',
+      );
+      parts.add('llama-server: 停止（Agent が Strata）');
     }
+
+    parts.add('Agent: ${agent.label}');
 
     emit(
       state.copyWith(
-        infoMessage: llmMsg,
+        infoMessage: parts.join(' / '),
         clearLocalLlmConnectionError: true,
       ),
     );
@@ -340,5 +561,22 @@ class ApiSettingsBloc extends Bloc<ApiSettingsEvent, ApiSettingsState> {
         clearInfoMessage: true,
       ),
     );
+  }
+
+  static bool _sameListenHost(String a, String b) {
+    String norm(String raw) {
+      final uri = Uri.tryParse(raw.trim());
+      if (uri != null && uri.host.isNotEmpty) return uri.host.toLowerCase();
+      return raw
+          .trim()
+          .replaceFirst(RegExp(r'^https?://'), '')
+          .split('/')
+          .first
+          .split(':')
+          .first
+          .toLowerCase();
+    }
+
+    return norm(a) == norm(b);
   }
 }

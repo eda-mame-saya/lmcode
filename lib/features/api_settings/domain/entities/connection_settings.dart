@@ -1,6 +1,8 @@
 import 'ami_voice_engine.dart';
+import 'coding_llm_backend.dart';
 import 'generative_ai_provider.dart';
 import 'local_llm_connection_settings.dart';
+import 'strata_connection_settings.dart';
 
 /// AmiVoice 接続設定。
 /// 新規追加：ドメインエンティティ
@@ -123,23 +125,53 @@ class GeminiConnectionSettings {
 class ConnectionSettings {
   const ConnectionSettings({
     this.localLlm = const LocalLlmConnectionSettings(),
+    this.strata = const StrataConnectionSettings(),
+    this.codingBackend = CodingLlmBackend.llamaCpp,
     this.provider = GenerativeAiProvider.localLlm,
     this.dartSdkPath = '',
   });
 
   final LocalLlmConnectionSettings localLlm;
+
+  /// Strata（既定ポート 8090）。llama（8080）と共存可。
+  final StrataConnectionSettings strata;
+
+  /// S16 Agent が使う推論バックエンド。
+  final CodingLlmBackend codingBackend;
+
   final GenerativeAiProvider provider;
 
   /// S16 Dart 入力中補完用。空＝PATH から `dart` 探索（S11 §4.6）。
   final String dartSdkPath;
 
+  /// Agent 送信用の OpenAI 互換設定（選択中バックエンド）。
+  LocalLlmConnectionSettings agentChatSettings({String? strataModelId}) {
+    return switch (codingBackend) {
+      CodingLlmBackend.llamaCpp => localLlm.forServer(),
+      CodingLlmBackend.strata => strata.toChatClientSettings(
+          resolvedModelId: strataModelId,
+        ),
+    };
+  }
+
+  /// 選択中バックエンドが Agent 利用可能か。
+  /// Strata は Agent 選択時に起動するため、enabled ではなく接続先の有無で判定する。
+  bool get isAgentBackendUsable => switch (codingBackend) {
+        CodingLlmBackend.llamaCpp => localLlm.isCodingUsable,
+        CodingLlmBackend.strata => strata.hasEndpoint,
+      };
+
   ConnectionSettings copyWith({
     LocalLlmConnectionSettings? localLlm,
+    StrataConnectionSettings? strata,
+    CodingLlmBackend? codingBackend,
     GenerativeAiProvider? provider,
     String? dartSdkPath,
   }) {
     return ConnectionSettings(
       localLlm: localLlm ?? this.localLlm,
+      strata: strata ?? this.strata,
+      codingBackend: codingBackend ?? this.codingBackend,
       provider: provider ?? this.provider,
       dartSdkPath: dartSdkPath ?? this.dartSdkPath,
     );

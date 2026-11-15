@@ -13,6 +13,36 @@ abstract final class CodingNovelRuby {
     return '|$b《$r》';
   }
 
+  /// 強調ルビ（傍点）の文字。
+  static const emphasisMark = '・';
+
+  /// 強調ルビ。なろう記法ではズレを防ぐため **一文字ずつ** `|字《・》` にする。
+  ///
+  /// 空白・改行はそのまま残す。既にルビ記法になっている範囲は二重に振らず、
+  /// 親文字だけを一文字ずつ強調に置き換える。
+  static String emphasize(String text) {
+    if (text.isEmpty) return text;
+    final buf = StringBuffer();
+    for (final span in parse(text)) {
+      final plain = switch (span) {
+        CodingNovelPlainSpan(:final text) => text,
+        CodingNovelRubySpan(:final baseString) => baseString,
+      };
+      for (final rune in plain.runes) {
+        final ch = String.fromCharCode(rune);
+        if (_isSkippable(ch)) {
+          buf.write(ch);
+        } else {
+          buf.write('|$ch《$emphasisMark》');
+        }
+      }
+    }
+    return buf.toString();
+  }
+
+  static bool _isSkippable(String ch) =>
+      ch == '\n' || ch == '\r' || ch == '\t' || ch == ' ' || ch == '\u3000';
+
   /// 本文をルビ付きのインライン要素へ分解する。
   static List<CodingNovelInlineSpan> parse(String text) {
     if (text.isEmpty) return const [];

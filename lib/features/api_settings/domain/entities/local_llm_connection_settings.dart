@@ -15,6 +15,7 @@ class LocalLlmConnectionSettings {
     this.codingThinkingEnabled = false,
     this.codingAutoApplyPatches = false,
     this.enabled = true,
+    this.reasoningEffort,
   });
 
   /// ホスト（スキーム＋ホスト。例: `http://127.0.0.1`）。
@@ -43,6 +44,9 @@ class LocalLlmConnectionSettings {
 
   /// ローカル LLM をアプリ機能で使うか。
   final bool enabled;
+
+  /// OpenAI 互換 `reasoning_effort`（Strata 等）。null＝送信しない（llama-server）。
+  final String? reasoningEffort;
 
   bool get usesCustomCodingModel {
     final file = codingCustomGgufFileName?.trim() ?? '';
@@ -118,7 +122,9 @@ class LocalLlmConnectionSettings {
     bool? codingThinkingEnabled,
     bool? codingAutoApplyPatches,
     bool? enabled,
+    String? reasoningEffort,
     bool clearCodingCustomModel = false,
+    bool clearReasoningEffort = false,
   }) {
     return LocalLlmConnectionSettings(
       host: host ?? this.host,
@@ -138,6 +144,9 @@ class LocalLlmConnectionSettings {
       codingAutoApplyPatches:
           codingAutoApplyPatches ?? this.codingAutoApplyPatches,
       enabled: enabled ?? this.enabled,
+      reasoningEffort: clearReasoningEffort
+          ? null
+          : (reasoningEffort ?? this.reasoningEffort),
     );
   }
 
