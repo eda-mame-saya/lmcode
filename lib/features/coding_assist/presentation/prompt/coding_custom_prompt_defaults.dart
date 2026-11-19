@@ -78,6 +78,12 @@ abstract final class CodingCustomPromptDefaults {
           kind: kind,
           applyCustom: false,
         );
+      case CodingCustomPromptId.reproduceError:
+        return codingAssistReproduceErrorPrompt(
+          '',
+          kind: kind,
+          applyCustom: false,
+        );
       case CodingCustomPromptId.concise:
         return codingAssistConcisePrompt('', applyCustom: false);
       case CodingCustomPromptId.expectFileOutput:
@@ -104,6 +110,8 @@ abstract final class CodingCustomPromptDefaults {
         );
       case CodingCustomPromptId.programAnalyze:
         return codingAssistProgramAnalyzePrompt('', applyCustom: false);
+      case CodingCustomPromptId.fetchLatestDocs:
+        return codingAssistFetchLatestDocsPrompt('', applyCustom: false);
       case CodingCustomPromptId.taskDecompose:
         return codingAssistTaskDecomposePrompt(
           '',

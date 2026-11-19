@@ -17,6 +17,7 @@ import '../../../generative_ai/data/local_llm_server_launcher.dart';
 import '../../../generative_ai/data/strata_server_launcher.dart';
 import '../../../generative_ai/domain/ai_generation_progress.dart';
 import '../../data/coding_flutter_verify_runner.dart';
+import '../../data/coding_library_docs_fetcher.dart';
 import '../../data/coding_system_sleeper.dart';
 import '../../data/flutter_sdk_resolver.dart';
 import '../../domain/coding_add_file_conflict.dart';
@@ -114,6 +115,10 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistCodingThinkingChanged>(_onCodingThinkingChanged);
     on<CodingAssistStrataThinkingEffortChanged>(_onStrataThinkingEffortChanged);
     on<CodingAssistAgentAutoRunChanged>(_onAgentAutoRunChanged);
+    on<CodingAssistAgentAutoAllowReadFileChanged>(
+      _onAgentAutoAllowReadFileChanged,
+    );
+    on<CodingAssistWebLibraryDocsChanged>(_onWebLibraryDocsChanged);
     on<CodingAssistUiFontSizesChanged>(_onUiFontSizesChanged);
     on<CodingAssistHarnessChanged>(_onHarnessChanged);
     on<CodingAssistAutoSleepSettingsChanged>(_onAutoSleepSettingsChanged);
@@ -328,6 +333,11 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
       buf
         ..writeln()
         ..writeln(CodingWorkspaceKindDetect.symbolToolsFor(kind).trim());
+    }
+    if (state.webLibraryDocsEnabled) {
+      buf
+        ..writeln()
+        ..writeln(CodingWorkspaceKindDetect.libraryDocsToolsFor().trim());
     }
     if (root != null && root.isNotEmpty) {
       buf
@@ -562,6 +572,8 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     var recent = <String>[];
     final uiFonts = _uiSettingsLocalDataSource.loadFontSizes();
     final harness = _uiSettingsLocalDataSource.loadHarness();
+    final webLibraryDocs =
+        _uiSettingsLocalDataSource.loadWebLibraryDocsEnabled();
     final autoSleep = _uiSettingsLocalDataSource.loadAutoSleepSettings();
     final indentSize = _uiSettingsLocalDataSource.loadIndentSize();
     final novelSettings = _uiSettingsLocalDataSource.loadNovelSettings();
@@ -648,6 +660,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         clearStrataContextSize: strataCtx == null,
         uiFontSizes: uiFonts,
         harness: harness,
+        webLibraryDocsEnabled: webLibraryDocs,
         autoSleepSettings: autoSleep,
         indentSize: indentSize,
         novelSettings: novelSettings,
@@ -1375,7 +1388,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
       codingAssistApplyPromptActions(
         state.draft,
         fixedPrompts,
-        omitReadFile: state.localLlm.codingAutoApplyPatches,
+        omitReadFile: state.localLlm.codingAutoOmitsReadFile,
         kind: state.index?.kind ?? CodingWorkspaceKind.generic,
       ),
     );
@@ -1774,7 +1787,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         !anyReviseExisting &&
         !anyChooseNewPath &&
         !anyEmptyTarget;
-    final currentLine = state.localLlm.codingAutoApplyPatches
+    final currentLine = state.localLlm.codingAutoOmitsReadFile
         ? '古い内容の推測禁止。下記現状の行をそのまま - に使う。read_file は出さない。'
         : '古い内容の推測禁止。read_file または下記現状の行をそのまま - に使う。';
     if (anyReviseExisting && !anyChooseNewPath && !anyAddExists) {
@@ -2169,6 +2182,9 @@ $avoid$guidance
       final openBuffers = <String, String>{
         for (final tab in state.openTabs) tab.relativePath: tab.content,
       };
+      final docsFetcher = state.webLibraryDocsEnabled
+          ? CodingLibraryDocsFetcher(workspaceRoot: root)
+          : null;
       final tools = CodingAgentTools(
         root,
         indexedFiles: index?.relativeFiles ?? const [],
@@ -2176,6 +2192,22 @@ $avoid$guidance
         rootLabel: index?.rootLabel,
         openBuffers: openBuffers,
         symbols: symbolIndex,
+        webLibraryDocsEnabled: state.webLibraryDocsEnabled,
+        libraryDocsFetch: docsFetcher == null
+            ? null
+            : ({
+                required String library,
+                required String query,
+                String? version,
+                String ecosystem = 'auto',
+              }) {
+                return docsFetcher.fetch(
+                  library: library,
+                  query: query,
+                  version: version,
+                  ecosystem: ecosystem,
+                );
+              },
         readCharLimit: state.harness.maxReadChars,
         grepHitLimit: state.harness.maxGrepHits,
         listEntryLimit: state.harness.maxListEntries,
@@ -2205,8 +2237,11 @@ $avoid$guidance
                 'プロンプト規則の逐条照合・方針の長文検討は禁止。'
                 'すぐ ```tool か *** Begin Patch を出す。終わらない長考は失敗とみなす。'
           : system;
-      final streamSystem = autoExecute
+      final omitReadFile = state.localLlm.codingAutoOmitsReadFile;
+      final streamSystem = omitReadFile
           ? '$baseSystem\n\n$codingAutoExecuteNoReadFileSuffix'
+          : autoExecute
+          ? '$baseSystem\n\n$codingAutoExecuteAllowReadFileSuffix'
           : baseSystem;
 
       try {
@@ -2455,7 +2490,7 @@ $avoid$guidance
               needsFollowUpAfterTools = true;
               continue;
             }
-            if (autoExecute &&
+            if (omitReadFile &&
                 parsed.patches.isEmpty &&
                 codingAutoExecuteNamedPaths(
                   toolCalls: const [],
@@ -2484,7 +2519,7 @@ $avoid$guidance
             break;
           }
 
-          if (autoExecute &&
+          if (omitReadFile &&
               parsed.toolCalls.any((call) => call.name == 'read_file')) {
             if (parsed.patches.isNotEmpty) {
               if (!emit.isDone) {
@@ -3690,14 +3725,19 @@ $avoid$guidance
     for (final call in calls) {
       if (_cancelRequested) break;
       final toolPath = '${call.args['path'] ?? ''}'.trim();
+      final toolLibrary = '${call.args['library'] ?? call.args['package'] ?? ''}'
+          .trim();
       final toolQuery =
           '${call.args['symbol'] ?? call.args['query'] ?? call.args['pattern'] ?? ''}'
               .trim();
-      final toolLine = toolPath.isEmpty
+      final toolTarget = toolPath.isNotEmpty
+          ? toolPath
+          : (toolLibrary.isNotEmpty ? toolLibrary : '');
+      final toolLine = toolTarget.isEmpty
           ? (toolQuery.isEmpty ? call.name : '${call.name}($toolQuery)')
           : (toolQuery.isEmpty
-                ? '${call.name}($toolPath)'
-                : '${call.name}($toolPath $toolQuery)');
+                ? '${call.name}($toolTarget)'
+                : '${call.name}($toolTarget $toolQuery)');
       if (!emit.isDone) {
         emit(
           state.copyWith(
@@ -5565,6 +5605,62 @@ $avoid$guidance
       );
     } catch (e) {
       emit(state.copyWith(errorMessage: 'Agent自動実行の変更失敗: $e'));
+    }
+  }
+
+  /// 自動実行中の read_file 許可。設定キーだけ更新し、llama-server は再起動しない。
+  Future<void> _onAgentAutoAllowReadFileChanged(
+    CodingAssistAgentAutoAllowReadFileChanged event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    if (state.isGenerating || state.isLlmBusy) return;
+    try {
+      final settings = await _getConnectionSettings();
+      final previous = settings.localLlm;
+      if (previous.codingAutoAllowReadFile == event.enabled) return;
+      final llm = previous.copyWith(codingAutoAllowReadFile: event.enabled);
+      await _saveConnectionSettings(settings.copyWith(localLlm: llm));
+      emit(
+        state.copyWith(
+          localLlm: llm,
+          agentStatusMessage: event.enabled
+              ? '自動実行中の read_file: 許可'
+              : '自動実行中の read_file: 禁止（アプリが本文を渡す）',
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'read_file 許可の変更失敗: $e'));
+    }
+  }
+
+  Future<void> _onWebLibraryDocsChanged(
+    CodingAssistWebLibraryDocsChanged event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    if (state.isGenerating || state.isLlmBusy) return;
+    if (state.webLibraryDocsEnabled == event.enabled) return;
+    try {
+      await _uiSettingsLocalDataSource.saveWebLibraryDocsEnabled(event.enabled);
+      var applied = state.appliedPromptActions;
+      if (!event.enabled &&
+          applied.contains(CodingPromptAction.fetchLatestDocs)) {
+        applied = [
+          for (final action in applied)
+            if (action != CodingPromptAction.fetchLatestDocs) action,
+        ];
+      }
+      emit(
+        state.copyWith(
+          webLibraryDocsEnabled: event.enabled,
+          appliedPromptActions: applied,
+          clearAppliedPromptActions: applied.isEmpty,
+          agentStatusMessage: event.enabled
+              ? '版付きライブラリ docs: ON（ローカル優先）'
+              : '版付きライブラリ docs: OFF',
+        ),
+      );
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'ライブラリ docs 設定の保存失敗: $e'));
     }
   }
 

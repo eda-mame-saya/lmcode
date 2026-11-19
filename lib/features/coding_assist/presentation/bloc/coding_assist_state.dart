@@ -26,6 +26,7 @@ final class CodingAssistState extends Equatable {
     this.strataContextSize,
     this.uiFontSizes = CodingUiFontSizes.defaults,
     this.harness = CodingHarnessSettings.defaults,
+    this.webLibraryDocsEnabled = true,
     this.autoSleepSettings = const CodingAutoSleepSettings(),
     this.autoSleepArmed = false,
     this.autoSleepDeadline,
@@ -85,6 +86,9 @@ final class CodingAssistState extends Equatable {
 
   /// Agent のハーネス定数。表示設定とは別に保存する。
   final CodingHarnessSettings harness;
+
+  /// 版付きライブラリ docs（ローカル優先・不足時ネット）。既定 ON。
+  final bool webLibraryDocsEnabled;
 
   /// 自動実行後のスリープ設定。時刻の開始は自動実行が始まったとき。
   final CodingAutoSleepSettings autoSleepSettings;
@@ -269,6 +273,7 @@ final class CodingAssistState extends Equatable {
     bool clearStrataContextSize = false,
     CodingUiFontSizes? uiFontSizes,
     CodingHarnessSettings? harness,
+    bool? webLibraryDocsEnabled,
     CodingAutoSleepSettings? autoSleepSettings,
     bool? autoSleepArmed,
     DateTime? autoSleepDeadline,
@@ -341,6 +346,8 @@ final class CodingAssistState extends Equatable {
           : (strataContextSize ?? this.strataContextSize),
       uiFontSizes: uiFontSizes ?? this.uiFontSizes,
       harness: harness ?? this.harness,
+      webLibraryDocsEnabled:
+          webLibraryDocsEnabled ?? this.webLibraryDocsEnabled,
       autoSleepSettings: autoSleepSettings ?? this.autoSleepSettings,
       autoSleepArmed: autoSleepArmed ?? this.autoSleepArmed,
       autoSleepDeadline: clearAutoSleepDeadline
@@ -429,8 +436,10 @@ final class CodingAssistState extends Equatable {
     localLlm.codingCustomGgufFileName,
     localLlm.codingContextSize,
     harness,
+    webLibraryDocsEnabled,
     localLlm.codingThinkingEnabled,
     localLlm.codingAutoApplyPatches,
+    localLlm.codingAutoAllowReadFile,
     localLlm.enabled,
     strata.host,
     strata.port,

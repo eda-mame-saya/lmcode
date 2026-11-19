@@ -93,12 +93,14 @@ class _Toolbar extends StatelessWidget {
             icon: const Icon(Icons.folder_open, size: 18),
             label: const Text('フォルダを開く'),
           ),
-          const SizedBox(width: 4),
-          TextButton.icon(
-            onPressed: onOpenNovelFolder,
-            icon: const Icon(Icons.menu_book_outlined, size: 18),
-            label: const Text('小説WS'),
-          ),
+          if (state.novelSettings.showUi) ...[
+            const SizedBox(width: 4),
+            TextButton.icon(
+              onPressed: onOpenNovelFolder,
+              icon: const Icon(Icons.menu_book_outlined, size: 18),
+              label: const Text('小説WS'),
+            ),
+          ],
           const SizedBox(width: 8),
           SizedBox(
             width: 300,

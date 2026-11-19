@@ -91,6 +91,36 @@ class CodingLspSymbolIndex {
     );
   }
 
+  Future<String> hover({
+    required String relativePath,
+    required String absolutePath,
+    required int line,
+    int? column,
+    String? symbol,
+    String? bufferText,
+    int? maxChars,
+  }) async {
+    final located = await _atPosition(
+      absolutePath: absolutePath,
+      line: line,
+      column: column,
+      symbol: symbol,
+      bufferText: bufferText,
+      request: (uri, line, character) => client.hover(
+        uri: uri,
+        line: line,
+        character: character,
+      ),
+    );
+    if (located.error != null) return located.error!;
+    return CodingSymbolFormat.formatHover(
+      path: relativePath,
+      line: line,
+      raw: located.raw,
+      maxChars: maxChars ?? CodingSymbolFormat.maxHoverChars,
+    );
+  }
+
   Future<String> findReferences({
     required String relativePath,
     required String absolutePath,

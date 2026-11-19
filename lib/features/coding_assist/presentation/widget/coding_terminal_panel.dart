@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_pty/flutter_pty.dart';
 import 'package:xterm/xterm.dart';
 
@@ -34,6 +35,10 @@ class CodingTerminalPanel extends StatefulWidget {
   static const heightMin = 120.0;
   static const heightDefault = 200.0;
 
+  /// 最大化時に中央ペインへ残すエディタ側の最小高さ。
+  /// 0 ならターミナルをエディタ部上端まで広げられる。
+  static const editorFloorWhenMaximized = 0.0;
+
   @override
   State<CodingTerminalPanel> createState() => _CodingTerminalPanelState();
 }
@@ -41,15 +46,22 @@ class CodingTerminalPanel extends StatefulWidget {
 class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
   late final Terminal _terminal;
   late final TerminalController _terminalController;
+  late final FocusNode _focusNode;
+  final GlobalKey<TerminalViewState> _terminalViewKey =
+      GlobalKey<TerminalViewState>();
   Pty? _pty;
   String? _startError;
   bool _exited = false;
+  bool _hasSelection = false;
 
   @override
   void initState() {
     super.initState();
     _terminal = Terminal(maxLines: 10000);
     _terminalController = TerminalController();
+    _terminalController.addListener(_onControllerChanged);
+    _focusNode = FocusNode(debugLabel: 'codingTerminal');
+    _focusNode.addListener(_onFocusChanged);
     _terminal.onOutput = _onTerminalOutput;
     _terminal.onResize = _onTerminalResize;
     _startShell();
@@ -61,13 +73,42 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
     if (oldWidget.workingDirectory != widget.workingDirectory) {
       _restartShell();
     }
+    if (oldWidget.collapsed && !widget.collapsed) {
+      // 展開直後に IME 用 TextInput を開き直す。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureInputConnection();
+      });
+    }
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onFocusChanged);
+    _focusNode.dispose();
+    _terminalController.removeListener(_onControllerChanged);
     _killPty();
     _terminalController.dispose();
     super.dispose();
+  }
+
+  void _onControllerChanged() {
+    final next = _terminalController.selection != null;
+    if (next == _hasSelection) return;
+    setState(() => _hasSelection = next);
+  }
+
+  void _onFocusChanged() {
+    if (_focusNode.hasFocus) {
+      _ensureInputConnection();
+    }
+  }
+
+  /// xterm の CustomTextEdit は focus 時に `consumeKeyboardToken` が無いと
+  /// TextInput を開かないことがある。明示的に [TerminalViewState.requestKeyboard]
+  /// を呼び、日本語 IME 用の接続を確保する。
+  void _ensureInputConnection() {
+    _terminalViewKey.currentState?.requestKeyboard();
   }
 
   void _onTerminalOutput(String data) {
@@ -99,6 +140,7 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
     setState(() {
       _startError = null;
       _exited = false;
+      _hasSelection = false;
     });
     _startShell();
   }
@@ -142,6 +184,84 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
     } catch (e) {
       setState(() => _startError = 'ターミナルを起動できませんでした: $e');
     }
+  }
+
+  String? _selectedText() {
+    final selection = _terminalController.selection;
+    if (selection == null) return null;
+    final text = _terminal.buffer.getText(selection);
+    if (text.isEmpty) return null;
+    return text;
+  }
+
+  Future<bool> _copySelection() async {
+    final text = _selectedText();
+    if (text == null) return false;
+    await Clipboard.setData(ClipboardData(text: text));
+    return true;
+  }
+
+  Future<void> _pasteClipboard() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text;
+    if (text == null || text.isEmpty) return;
+    _terminal.paste(text);
+    _terminalController.clearSelection();
+    _ensureInputConnection();
+  }
+
+  Future<void> _onSecondaryTap(
+    TapDownDetails details,
+    CellOffset _,
+  ) async {
+    final selection = _selectedText();
+    if (selection != null) {
+      final copied = await _copySelection();
+      if (copied && mounted) {
+        _terminalController.clearSelection();
+      }
+      return;
+    }
+    await _pasteClipboard();
+  }
+
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final isMeta = HardwareKeyboard.instance.isMetaPressed;
+    final isControl = HardwareKeyboard.instance.isControlPressed;
+    final isShift = HardwareKeyboard.instance.isShiftPressed;
+    final isAlt = HardwareKeyboard.instance.isAltPressed;
+    if (isAlt) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+
+    final hasSelection = _selectedText() != null;
+
+    // コピー: macOS ⌘C／他 Ctrl+Shift+C。
+    // 選択中の Ctrl+C もコピー（無選択なら後続でシェル割り込みへ）。
+    final copyChord = key == LogicalKeyboardKey.keyC &&
+        !isAlt &&
+        ((isMeta && !isControl && !isShift) ||
+            (isControl && isShift && !isMeta) ||
+            (isControl && !isShift && !isMeta && hasSelection));
+    if (copyChord && hasSelection) {
+      _copySelection();
+      return KeyEventResult.handled;
+    }
+
+    // ペースト: macOS ⌘V／他 Ctrl+V・Ctrl+Shift+V。
+    final pasteChord = key == LogicalKeyboardKey.keyV &&
+        !isAlt &&
+        ((isMeta && !isControl && !isShift) || (isControl && !isMeta));
+    if (pasteChord) {
+      _pasteClipboard();
+      return KeyEventResult.handled;
+    }
+
+    return KeyEventResult.ignored;
   }
 
   @override
@@ -225,6 +345,20 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
                       ),
                     ),
                   ),
+                  if (_hasSelection)
+                    IconButton(
+                      tooltip: '選択範囲をコピー',
+                      onPressed: () async {
+                        await _copySelection();
+                      },
+                      icon: const Icon(Icons.copy, size: 16),
+                      visualDensity: VisualDensity.compact,
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
+                      ),
+                    ),
                   if (_exited || _startError != null)
                     TextButton(
                       onPressed: _restartShell,
@@ -269,7 +403,9 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
                         )
                       : TerminalView(
                           _terminal,
+                          key: _terminalViewKey,
                           controller: _terminalController,
+                          focusNode: _focusNode,
                           theme: TerminalThemes.defaultTheme,
                           textStyle: const TerminalStyle(
                             fontSize: 12,
@@ -282,6 +418,11 @@ class _CodingTerminalPanelState extends State<CodingTerminalPanel> {
                           hardwareKeyboardOnly: false,
                           keyboardType: TextInputType.text,
                           backgroundOpacity: 1,
+                          onKeyEvent: _onKeyEvent,
+                          onSecondaryTapDown: _onSecondaryTap,
+                          onTapUp: (_, __) {
+                            _ensureInputConnection();
+                          },
                         ),
                 ),
               ),

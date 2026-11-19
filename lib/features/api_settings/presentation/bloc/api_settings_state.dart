@@ -133,6 +133,7 @@ final class ApiSettingsState extends Equatable {
         settings.localLlm.codingCustomGgufFileName,
         settings.localLlm.codingContextSize,
         settings.localLlm.codingAutoApplyPatches,
+        settings.localLlm.codingAutoAllowReadFile,
         settings.localLlm.enabled,
         settings.strata.host,
         settings.strata.port,

@@ -91,6 +91,27 @@ class CodingSymbolGateway implements CodingSymbolIndex {
   }
 
   @override
+  Future<String> hover({
+    required String relativePath,
+    required int line,
+    int? column,
+    String? symbol,
+    String? bufferText,
+  }) {
+    return _onFile(relativePath, (index, abs) {
+      return index.hover(
+        relativePath: relativePath,
+        absolutePath: abs,
+        line: line,
+        column: column,
+        symbol: symbol,
+        bufferText: bufferText,
+        maxChars: CodingSymbolFormat.maxHoverChars,
+      );
+    });
+  }
+
+  @override
   Future<String> findReferences({
     required String relativePath,
     required int line,

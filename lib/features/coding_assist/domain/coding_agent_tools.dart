@@ -12,6 +12,14 @@ import 'coding_symbol_index.dart';
 import 'coding_text_file.dart';
 import 'coding_workspace_scan.dart';
 
+/// 版付きライブラリ docs 取得。未設定なら tool は案内のみ返す。
+typedef CodingLibraryDocsFetch = Future<String> Function({
+  required String library,
+  required String query,
+  String? version,
+  String ecosystem,
+});
+
 /// 検査文に添える依頼文の最大文字数。
 const codingFixedPromptRequestChars = 400;
 
@@ -42,7 +50,8 @@ String codingFixedPromptCompletion(List<CodingPromptAction> actions) {
         set.contains(CodingPromptAction.expectDocumentEdit);
     final add =
         set.contains(CodingPromptAction.expectFileOutput) ||
-        set.contains(CodingPromptAction.expectDocumentCreate);
+        set.contains(CodingPromptAction.expectDocumentCreate) ||
+        set.contains(CodingPromptAction.reproduceError);
     if (update && add) {
       buf.write(
         '既に読んだ本文で Begin/End Patch を出してください。'
@@ -50,14 +59,28 @@ String codingFixedPromptCompletion(List<CodingPromptAction> actions) {
         'Add File のパスはディレクトリ付きです。ファイル名だけは不可です。',
       );
     } else if (add) {
-      buf.write(
-        '既に読んだ本文で Begin/End Patch を出してください。'
-        '新規は Add File です。パスはディレクトリ付きの相対パスです。ファイル名だけは不可です。',
-      );
+      if (set.contains(CodingPromptAction.reproduceError) &&
+          !set.contains(CodingPromptAction.expectFileOutput) &&
+          !set.contains(CodingPromptAction.expectDocumentCreate)) {
+        buf.write(
+          '既に読んだ本文で Begin/End Patch を出してください。'
+          'エラー再現用は Add File（test/ 配下のディレクトリ付き相対パス）です。'
+          '本番コードの Update はこのターンでは出さないでください。',
+        );
+      } else {
+        buf.write(
+          '既に読んだ本文で Begin/End Patch を出してください。'
+          '新規は Add File です。パスはディレクトリ付きの相対パスです。ファイル名だけは不可です。',
+        );
+      }
     } else {
       buf.write('既に読んだ本文で Begin/End Patch を出してください。既存の修正は Update File です。');
     }
-    if (CodingPromptAction.skipsFlutterVerify(actions)) {
+    final documentOnly =
+        (set.contains(CodingPromptAction.expectDocumentCreate) ||
+            set.contains(CodingPromptAction.expectDocumentEdit)) &&
+        CodingPromptAction.skipsFlutterVerify(actions);
+    if (documentOnly) {
       buf.write('文書だけです。ソース、テスト、Dart は出さないでください。');
     }
   } else if (set.contains(CodingPromptAction.programAnalyze)) {
@@ -85,7 +108,8 @@ bool _wantsPatch(Set<CodingPromptAction> actions) {
       actions.contains(CodingPromptAction.expectFileOutput) ||
       actions.contains(CodingPromptAction.expectDocumentCreate) ||
       actions.contains(CodingPromptAction.expectDocumentEdit) ||
-      actions.contains(CodingPromptAction.errorAnalyze);
+      actions.contains(CodingPromptAction.errorAnalyze) ||
+      actions.contains(CodingPromptAction.reproduceError);
 }
 
 /// 固定プロンプトが求める成果物が応答に無いか。
@@ -182,7 +206,9 @@ void _writeRequestAndPromptLabels(
     CodingPromptAction.expectDocumentEdit,
     CodingPromptAction.expectDocumentCreate,
     CodingPromptAction.errorAnalyze,
+    CodingPromptAction.reproduceError,
     CodingPromptAction.programAnalyze,
+    CodingPromptAction.fetchLatestDocs,
     CodingPromptAction.concise,
   ];
   final labels = [
@@ -296,13 +322,22 @@ bool codingReplyStillRequestsReads(String reply) {
   return text.contains('read_file') || text.contains('ファイルを読');
 }
 
-/// 自動実行 ON の system 末尾。人が渡した本文で Patch を書き、`read_file` は出さない。
+/// 自動実行 ON かつ read_file 禁止の system 末尾。人が渡した本文で Patch を書く。
 const codingAutoExecuteNoReadFileSuffix = '''
 【自動実行】read_file は出さない。本文は人が添付したファイルか、アプリが開いて渡した本文だけを使う。行番号はその本文の1行目から数える。
 足りないファイルはツールにせず、次の形だけを書く:
 不足:
 相対/パス.dart
 アプリは有効なパスをこのターンで1回だけ開く。開いたあとは完了の形を書く。list_dir と grep で本文の代わりにしない。
+ライブラリ API は hover / go_to_definition で確認してよい（推測禁止）。
+説明・使い方がローカルで足りないときだけ fetch_library_docs を使ってよい。
+''';
+
+/// 自動実行 ON かつ read_file 許可の system 末尾。
+const codingAutoExecuteAllowReadFileSuffix = '''
+【自動実行】Update／Add は自動で書く。調査は list_dir / grep / read_file とシンボルツール（hover / go_to_definition 等）を使ってよい。
+外部パッケージの API は学習データで推測せず、hover または go_to_definition で確認してから Patch する。
+説明・使い方がローカルで足りないときだけ fetch_library_docs を使ってよい。
 ''';
 
 /// 自動実行で実行しなかった `read_file`。本文ではないので検査の既読には戻さない。
@@ -603,6 +638,8 @@ final class CodingAgentTools {
     this.rootLabel,
     this.openBuffers = const {},
     this.symbols,
+    this.webLibraryDocsEnabled = true,
+    this.libraryDocsFetch,
     int? readCharLimit,
     int? grepHitLimit,
     int? listEntryLimit,
@@ -621,6 +658,8 @@ final class CodingAgentTools {
   final String? rootLabel;
   final Map<String, String> openBuffers;
   final CodingSymbolIndex? symbols;
+  final bool webLibraryDocsEnabled;
+  final CodingLibraryDocsFetch? libraryDocsFetch;
   final int readCharLimit;
   final int grepHitLimit;
   final int listEntryLimit;
@@ -962,13 +1001,36 @@ final class CodingAgentTools {
         return _workspaceSymbol(args);
       case 'go_to_definition':
         return _symbolAt('go_to_definition', args);
+      case 'hover':
+        return _symbolAt('hover', args);
       case 'find_references':
         return _symbolAt('find_references', args);
+      case 'fetch_library_docs':
+        return _fetchLibraryDocs(args);
       case 'propose_patch':
         return 'propose_patch は応答内の Begin/End Patch で提案してください（ツール実行不要）';
       default:
         return '未知のツール: $name';
     }
+  }
+
+  Future<String> _fetchLibraryDocs(Map<String, dynamic> args) async {
+    if (!webLibraryDocsEnabled || libraryDocsFetch == null) {
+      return 'fetch_library_docs は設定で無効です。'
+          'hover / go_to_definition、またはローカル依存の実体を使ってください。';
+    }
+    final library =
+        '${args['library'] ?? args['package'] ?? args['name'] ?? ''}'.trim();
+    if (library.isEmpty) return 'library が空です';
+    final query = '${args['query'] ?? args['q'] ?? ''}'.trim();
+    final version = '${args['version'] ?? ''}'.trim();
+    final ecosystem = '${args['ecosystem'] ?? args['eco'] ?? 'auto'}'.trim();
+    return libraryDocsFetch!(
+      library: library,
+      query: query,
+      version: version.isEmpty ? null : version,
+      ecosystem: ecosystem.isEmpty ? 'auto' : ecosystem,
+    );
   }
 
   static bool _truthy(dynamic v) {
@@ -1013,6 +1075,15 @@ final class CodingAgentTools {
           symbol: symbol,
           bufferText: buffer,
           openBuffers: openBuffers,
+        );
+      }
+      if (name == 'hover') {
+        return symbols!.hover(
+          relativePath: rel,
+          line: line,
+          column: column,
+          symbol: symbol,
+          bufferText: buffer,
         );
       }
       return symbols!.findReferences(

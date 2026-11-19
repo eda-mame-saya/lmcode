@@ -646,6 +646,74 @@ const codingAssistAttachSelectionHint = 'エディタの選択範囲を送信時
 const codingAssistErrorAnalyzeHint =
     '押すと適用（もう一度で解除）。他の補助とは同時に適用できません。入力欄のエラー文言に解析・修正指示を付け、送信ボタンで送ります。';
 
+/// 「エラーの再現」用。本番修正の前に test/ へ再現コードを書かせる。
+String codingAssistReproduceErrorPrompt(
+  String errorText, {
+  CodingWorkspaceKind kind = CodingWorkspaceKind.flutter,
+  bool applyCustom = true,
+}) {
+  final samples = CodingWorkspaceKindDetect.samplesFor(kind);
+  final flutter = samples.usesFlutterTests;
+  final testPath = flutter
+      ? 'test/repro/error_repro_test.dart'
+      : (kind == CodingWorkspaceKind.python
+            ? 'tests/repro/test_error_repro.py'
+            : kind == CodingWorkspaceKind.react
+            ? 'src/__tests__/error_repro.test.ts'
+            : 'test/repro/error_repro_test.txt');
+  final testHint = flutter
+      ? 'Flutter なら `test/repro/` 配下の `*_test.dart`（package:flutter_test）。`flutter test` で単体実行できること'
+      : '既存のテスト配置に合わせ、単体で実行・確認できる最小コードにする';
+  final builtIn =
+      '''
+【エラーの再現・最優先で厳守】
+貼り付けたエラーを、**本番コードを直す前に**、単体で再現できる最小コードとして test 配下に作る。
+ローカル LLM はいきなり本番修正すると外れやすい。まずは再現環境を作り、そこで試行錯誤する。
+
+このターンの成果物:
+- **Add File のみ**（必要なら複数。いずれも再現用）。本番の lib／src 等への Update／修正 Patch は禁止
+- 配置の目安: `$testPath`（既存の test 構成があればそれに合わせる。list_dir で確認）
+- $testHint
+
+手順:
+1. エラー文言から現象・パス・シンボルを読み取る。必要なら list_dir / grep / read_file / hover で根拠を取る
+2. 本番の大きな依存を持ち込まず、同じ失敗が起きるように最小化する（モックやスタブ可）
+3. 再現用ファイルを Begin/End Patch の **Add File** で出す
+4. 短いコメントまたはテスト名で「何を再現しているか」を書く
+5. 実行方法を日本語で1〜3行（例: `flutter test test/repro/error_repro_test.dart`）
+
+必須形式:
+配置先: $testPath
+*** Begin Patch
+*** Add File: $testPath
+@@
++...
+*** End Patch
+
+禁止:
+- このターンで本番ソースの Update File／修正 Patch
+- 「直しました」だけで再現コードが無いこと
+- Markdown のコードフェンスだけでソースを出すこと（カードにならない）
+- ファイル名だけのパス（ディレクトリ必須）
+
+次のターン以降（人がテストを回したあと、または続きの依頼）:
+- 再現が安定するまで test/repro 側を直してよい
+- 再現できたあとで、本番修正が必要なら「修正ソース提案を期待」や通常の修正依頼へ進む
+''';
+  final rules = _customOr(
+    CodingCustomPromptId.reproduceError,
+    builtIn,
+    applyCustom: applyCustom,
+  );
+  final body = errorText.trim();
+  if (body.isEmpty) return rules.trim();
+  return '$body\n\n$rules'.trim();
+}
+
+/// ＋メニュー「エラーの再現」の説明。
+const codingAssistReproduceErrorHint =
+    '押すと適用（もう一度で解除）。エラー解析・即時修正とは同時に使えません。本番を直す前に test 配下へ再現コードを書かせます。';
+
 /// ＋メニュー「簡潔に表示」の説明。
 const codingAssistConciseHint = '押すと適用（もう一度で解除）。「短く簡潔に」の指示を送信時に付けます。';
 
@@ -667,6 +735,43 @@ const codingAssistExpectDocumentEditHint =
 /// ＋メニュー「プログラム分析」の説明。
 const codingAssistProgramAnalyzeHint =
     '押すと適用（もう一度で解除）。取り込み、無ければ表示中ファイルを分析する指示を送信時に付けます。';
+
+/// 「最新の情報を取得して調査」用。fetch_library_docs を必須にする。
+String codingAssistFetchLatestDocsPrompt(
+  String draft, {
+  bool applyCustom = true,
+}) {
+  const builtIn = '''
+【最新情報の取得・調査・最優先で厳守】
+学習データや記憶だけで答えず、**必ず先に** `fetch_library_docs` で版付き docs を取ってから調査・回答する。
+任意ではなく必須。1回も呼ばずに結論や Patch を出してはいけない。
+
+手順:
+1. 依頼から関係するライブラリ／パッケージ名を特定する（複数なら主要なものを最大3つ）
+2. 各ライブラリについて次を出す（query は具体的な API・やり方の語句）:
+```tool
+{"name":"fetch_library_docs","args":{"library":"パッケージ名","query":"調べたいこと"}}
+```
+3. tool 結果の `source` / `version` / `url` を根拠にする。取れなかったらその旨を短く書き、hover / go_to_definition で補う
+4. そのあと通常の調査（list_dir / read_file / シンボルツール）と、同時に適用中の他の＋の完了形へ進む
+
+注意:
+- シグネチャの事実は hover / go_to_definition を正とする。docs は説明・使い方の補強
+- ソース全文をネットに送る内容にしない（library・version・短い query のみ）
+''';
+  final rules = _customOr(
+    CodingCustomPromptId.fetchLatestDocs,
+    builtIn,
+    applyCustom: applyCustom,
+  );
+  final body = draft.trim();
+  if (body.isEmpty) return rules.trim();
+  return '$body\n\n$rules'.trim();
+}
+
+/// ＋メニュー「最新の情報を取得して調査」の説明。
+const codingAssistFetchLatestDocsHint =
+    '押すと適用（もう一度で解除）。送信時に fetch_library_docs を必ず先に呼ぶ指示を付けます。歯車の「版付きライブラリ docs」が OFF のときは使えません。';
 
 /// ＋メニュー「タスク分解」の説明。
 const codingAssistTaskDecomposeHint =
@@ -766,6 +871,10 @@ String codingAssistApplyPromptActions(
         bodiesSupplied: bodiesSupplied,
         kind: kind,
       ),
+      CodingPromptAction.reproduceError => codingAssistReproduceErrorPrompt(
+        text,
+        kind: kind,
+      ),
       CodingPromptAction.concise => codingAssistConcisePrompt(text),
       CodingPromptAction.expectFileOutput => codingAssistExpectFileOutputPrompt(
         text,
@@ -778,6 +887,9 @@ String codingAssistApplyPromptActions(
       CodingPromptAction.expectDocumentEdit =>
         codingAssistExpectDocumentEditPrompt(text),
       CodingPromptAction.programAnalyze => codingAssistProgramAnalyzePrompt(
+        text,
+      ),
+      CodingPromptAction.fetchLatestDocs => codingAssistFetchLatestDocsPrompt(
         text,
       ),
       CodingPromptAction.taskDecompose => codingAssistTaskDecomposePrompt(

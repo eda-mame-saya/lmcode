@@ -42,6 +42,12 @@ assets/env/**
 **/local_llm/models/**
 !**/local_llm/models/.gitkeep
 
+# llama.cpp ランタイム（v1 同梱バイナリ・dylib。調査用 poc に展開）
+document/llama_cpp調査/poc/llama*
+document/llama_cpp調査/poc/lib*
+document/llama_cpp調査/poc/ggml*
+document/llama_cpp調査/poc/LICENSE
+
 # Flutter/Dart/Pub related
 **/doc/api/
 **/ios/Flutter/.last_build_id

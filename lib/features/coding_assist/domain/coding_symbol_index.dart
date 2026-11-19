@@ -23,6 +23,15 @@ abstract class CodingSymbolIndex {
     Map<String, String> openBuffers = const {},
   });
 
+  /// シグネチャと doc comment（パッケージ API の正）。
+  Future<String> hover({
+    required String relativePath,
+    required int line,
+    int? column,
+    String? symbol,
+    String? bufferText,
+  });
+
   Future<String> findReferences({
     required String relativePath,
     required int line,

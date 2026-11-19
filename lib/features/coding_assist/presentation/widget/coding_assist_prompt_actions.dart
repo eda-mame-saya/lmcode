@@ -21,6 +21,7 @@ class _AgentPromptActionsRow extends StatelessWidget {
       required this.enabled,
       required this.selectionEnabled,
       required this.taskEvaluateEnabled,
+      required this.webLibraryDocsEnabled,
       required this.favorites,
       required this.applied,
       required this.onSelected,
@@ -30,6 +31,7 @@ class _AgentPromptActionsRow extends StatelessWidget {
   final bool enabled;
   final bool selectionEnabled;
   final bool taskEvaluateEnabled;
+  final bool webLibraryDocsEnabled;
   final List<CodingPromptAction> favorites;
   final List<CodingPromptAction> applied;
   final ValueChanged<CodingPromptAction> onSelected;
@@ -85,6 +87,15 @@ class _AgentPromptActionsRow extends StatelessWidget {
               hint: codingAssistErrorAnalyzeHint,
               isFavorite: favoriteSet.contains(CodingPromptAction.errorAnalyze),
               isApplied: appliedSet.contains(CodingPromptAction.errorAnalyze),
+            ),
+            _menuItem(
+              context,
+              action: CodingPromptAction.reproduceError,
+              hint: codingAssistReproduceErrorHint,
+              isFavorite: favoriteSet.contains(
+                CodingPromptAction.reproduceError,
+              ),
+              isApplied: appliedSet.contains(CodingPromptAction.reproduceError),
             ),
             _menuItem(
               context,
@@ -150,6 +161,16 @@ class _AgentPromptActionsRow extends StatelessWidget {
             ),
             _menuItem(
               context,
+              action: CodingPromptAction.fetchLatestDocs,
+              hint: codingAssistFetchLatestDocsHint,
+              enabled: webLibraryDocsEnabled,
+              isFavorite: favoriteSet.contains(
+                CodingPromptAction.fetchLatestDocs,
+              ),
+              isApplied: appliedSet.contains(CodingPromptAction.fetchLatestDocs),
+            ),
+            _menuItem(
+              context,
               action: CodingPromptAction.taskDecompose,
               hint: codingAssistTaskDecomposeHint,
               isFavorite: favoriteSet.contains(
@@ -198,7 +219,9 @@ class _AgentPromptActionsRow extends StatelessWidget {
             (action != CodingPromptAction.attachSelection ||
               selectionEnabled) &&
             (action != CodingPromptAction.taskEvaluate ||
-              taskEvaluateEnabled),
+              taskEvaluateEnabled) &&
+            (action != CodingPromptAction.fetchLatestDocs ||
+              webLibraryDocsEnabled),
             applied: appliedSet.contains(action),
             onPressed: () => onSelected(action),
           ),

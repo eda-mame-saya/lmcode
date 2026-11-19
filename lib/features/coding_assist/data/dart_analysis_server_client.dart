@@ -52,6 +52,9 @@ class DartAnalysisServerClient {
             },
           },
           'definition': {'linkSupport': true},
+          'hover': {
+            'contentFormat': ['markdown', 'plaintext'],
+          },
           'documentSymbol': {
             'hierarchicalDocumentSymbolSupport': true,
           },
@@ -161,6 +164,17 @@ class DartAnalysisServerClient {
     required int character,
   }) {
     return _request('textDocument/definition', {
+      'textDocument': {'uri': uri},
+      'position': {'line': line, 'character': character},
+    });
+  }
+
+  Future<Object?> hover({
+    required String uri,
+    required int line,
+    required int character,
+  }) {
+    return _request('textDocument/hover', {
       'textDocument': {'uri': uri},
       'position': {'line': line, 'character': character},
     });

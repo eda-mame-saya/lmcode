@@ -2,8 +2,8 @@
 
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
-ローカル LLM で動く **デスクトップ向けコーディングアシスト**（Flutter）。  
-クラウドにソースを送らず、端末上の `llama-server`（llama.cpp）と GGUF モデルで Agent・編集・ターミナルを使えます。
+ローカル LLM を中核にした **デスクトップ向けコーディングアシスト**（Flutter）。  
+端末上の `llama-server`（llama.cpp）と GGUF モデルで Agent・編集・ターミナルを使えます。オフライン完結は前提ではなく、必要に応じて Web 上の公開データを参照してローカル LLM の弱みを補う方針です。
 
 ```text
 起動（S16）
@@ -17,8 +17,9 @@
 |------|------|
 | 対象 OS | **macOS**／**Windows**（起動画面はコーディングアシスト S16） |
 | 生成 AI | **llama.cpp のみ**（Ollama／クラウド LLM は正としない） |
+| 外部参照 | **任意**（公開ドキュメント・パッケージ情報等。ソース全文の常時クラウド送信はしない） |
 | モデル | **GGUF は同梱しない**。利用者が追加（ライセンスは利用者責任） |
-| ログイン | 不要（完全ローカル） |
+| ログイン | 不要（会話・設定・ソース正本は端末ローカル） |
 
 ---
 
@@ -42,7 +43,7 @@
 | OS | macOS または Windows 10/11（64bit） |
 | メモリ | **32GB 以上**（14B 級 GGUF・128k ctx 想定） |
 | ディスク | アプリ＋ユーザー用意の GGUF 分 |
-| ネット | 本体の Agent／編集はオフライン可（モデル取得時のみ必要） |
+| ネット | **必須ではない**が前提にもしない。編集・ローカル LLM はオフラインでも可。モデル取得や Web 参照はネット要 |
 | 開発ツール | [Flutter](https://docs.flutter.dev/get-started/install) stable（SDK 制約: Dart `^3.11.0`） |
 | LLM ランタイム | `llama-server`（Homebrew の llama.cpp、または `~/Documents/LMCode/local_llm/` へ配置） |
 

@@ -429,7 +429,7 @@ abstract final class CodingApiContextBuilder {
   /// tool 結果直後はローカル LLM が即 EOS（空応答）しやすいので続行指示を付ける。
   static String _continueNudge(bool symbolTools) {
     final moreTools = symbolTools
-        ? 'file_outline / find_references / go_to_definition / workspace_symbol、足りなければ '
+        ? 'file_outline / hover / find_references / go_to_definition / workspace_symbol、足りなければ '
         : '';
     return 'ツール結果を踏まえて作業を続行してください。'
         'ファイル作成が必要なら、先に「配置先: ディレクトリ付き相対パス」を1行書き、'

@@ -480,7 +480,10 @@ class _EditorPaneState extends State<_EditorPane> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final maxTerminal = (constraints.maxHeight * 0.55).clamp(
+        // エディタ部の上端まで広げられる（従来の 55% 上限を撤廃）。
+        final maxTerminal = (constraints.maxHeight -
+                CodingTerminalPanel.editorFloorWhenMaximized)
+            .clamp(
           CodingTerminalPanel.heightMin,
           constraints.maxHeight,
         );

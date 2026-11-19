@@ -42,6 +42,9 @@ enum CodingCustomPromptId {
   /// ＋ エラー解析（本文供給後）。
   errorAnalyzeBodies,
 
+  /// ＋ エラーの再現。
+  reproduceError,
+
   /// ＋ 簡潔に表示。
   concise,
 
@@ -59,6 +62,9 @@ enum CodingCustomPromptId {
 
   /// ＋ プログラム分析。
   programAnalyze,
+
+  /// ＋ 最新の情報を取得して調査。
+  fetchLatestDocs,
 
   /// ＋ タスク分解。
   taskDecompose,
@@ -92,12 +98,14 @@ enum CodingCustomPromptId {
         errorAnalyze ||
         errorAnalyzeAuto ||
         errorAnalyzeBodies ||
+        reproduceError ||
         concise ||
         expectFileOutput ||
         expectFixProposal ||
         expectDocumentCreate ||
         expectDocumentEdit ||
         programAnalyze ||
+        fetchLatestDocs ||
         taskDecompose ||
         taskEvaluate ||
         runFlutterVerify =>
@@ -124,12 +132,14 @@ enum CodingCustomPromptId {
         errorAnalyze => 'エラー解析',
         errorAnalyzeAuto => 'エラー解析（自動実行）',
         errorAnalyzeBodies => 'エラー解析（本文供給後）',
+        reproduceError => 'エラーの再現',
         concise => '簡潔に表示',
         expectFileOutput => '新規ソース提案を期待',
         expectFixProposal => '修正ソース提案を期待',
         expectDocumentCreate => 'ドキュメント作成を期待',
         expectDocumentEdit => '修正ドキュメント提案を期待',
         programAnalyze => 'プログラム分析',
+        fetchLatestDocs => '最新の情報を取得して調査',
         taskDecompose => 'タスク分解',
         taskEvaluate => 'タスク評価',
         runFlutterVerify => 'テストを実行',
@@ -154,12 +164,14 @@ enum CodingCustomPromptId {
         errorAnalyze => '＋「エラー解析」通常送信時の指示本文。',
         errorAnalyzeAuto => '自動実行 ON 時のエラー解析（read_file 禁止）。',
         errorAnalyzeBodies => '不足ファイル本文を渡したあとのエラー解析。',
+        reproduceError => '＋「エラーの再現」。本番修正前に test へ再現コードを書かせる。',
         concise => '＋「簡潔に表示」の指示。',
         expectFileOutput => '＋「新規ソース提案を期待」の形式ルール。',
         expectFixProposal => '＋「修正ソース提案を期待」の形式ルール。',
         expectDocumentCreate => '＋「ドキュメント作成を期待」の形式ルール。',
         expectDocumentEdit => '＋「修正ドキュメント提案を期待」の形式ルール。',
         programAnalyze => '＋「プログラム分析」の指示。',
+        fetchLatestDocs => '＋「最新の情報を取得して調査」の指示（fetch_library_docs 必須）。',
         taskDecompose => '＋「タスク分解」の指示。',
         taskEvaluate => 'タスク評価用の別会話指示。',
         runFlutterVerify => '＋「テストを実行」の指示。',

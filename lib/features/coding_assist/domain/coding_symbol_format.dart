@@ -10,6 +10,8 @@ abstract final class CodingSymbolFormat {
   static const maxDefinitionLocations = 8;
   static const maxSignatureMapChars = 2000;
   static const maxLineChars = 160;
+  static const maxHoverChars = 4000;
+  static const maxLibraryContextLines = 24;
 
   static const unavailable =
       'シンボル探索はオフです。list_dir / read_file / grep を使ってください。';
@@ -246,19 +248,87 @@ abstract final class CodingSymbolFormat {
     final blocks = <String>[];
     for (var i = 0; i < take; i++) {
       final h = hits[i];
+      final package = isOutsideWorkspacePath(h.path);
       final head = heading.isEmpty
           ? '${h.path}:${h.line}'
           : '$heading ${h.path}:${h.line}';
+      final labeled = package ? '$head（パッケージ／SDK。API の正）' : head;
       final source = sourceByPath[h.path];
       if (source == null) {
-        blocks.add(head);
+        blocks.add(labeled);
         continue;
       }
-      final body = contextBlock(source, h.line, maxLineChars: maxLineChars);
-      blocks.add(body.isEmpty ? head : '$head\n$body');
+      final body = package
+          ? libraryContextBlock(source, h.line, maxLineChars: maxLineChars)
+          : contextBlock(source, h.line, maxLineChars: maxLineChars);
+      blocks.add(body.isEmpty ? labeled : '$labeled\n$body');
     }
     final more = hits.length > maxHits ? '\n…（上限 $maxHits）' : '';
     return '${blocks.join('\n\n')}$more';
+  }
+
+  /// WS 外（pub-cache 等）の絶対パスか。
+  static bool isOutsideWorkspacePath(String path) {
+    final n = path.replaceAll('\\', '/');
+    if (n.startsWith('/')) return true;
+    if (n.length > 2 && n[1] == ':') return true;
+    return n.contains('/.pub-cache/') ||
+        n.contains('/pub-cache/') ||
+        n.contains('/.pub/') ||
+        n.contains('/Flutter.framework/') ||
+        n.contains('/SourcePackages/');
+  }
+
+  /// LSP hover の contents を短いテキストへ。
+  static String formatHover({
+    required String path,
+    required int line,
+    required Object? raw,
+    int maxChars = maxHoverChars,
+  }) {
+    final text = parseHoverContents(raw);
+    if (text == null || text.isEmpty) {
+      return 'hover なし（$path:$line）';
+    }
+    final head = isOutsideWorkspacePath(path)
+        ? 'hover $path:$line（パッケージ／SDK。API の正）'
+        : 'hover $path:$line';
+    return clip('$head\n$text', maxChars);
+  }
+
+  static String? parseHoverContents(Object? raw) {
+    if (raw == null) return null;
+    if (raw is! Map) return null;
+    final contents = raw['contents'];
+    final parts = <String>[];
+    void add(Object? node) {
+      if (node == null) return;
+      if (node is String) {
+        final t = node.trim();
+        if (t.isNotEmpty) parts.add(t);
+        return;
+      }
+      if (node is List) {
+        for (final item in node) {
+          add(item);
+        }
+        return;
+      }
+      if (node is Map) {
+        final value = node['value'];
+        if (value is! String || value.trim().isEmpty) return;
+        final lang = node['language'];
+        if (lang is String && lang.trim().isNotEmpty) {
+          parts.add('```$lang\n${value.trim()}\n```');
+        } else {
+          parts.add(value.trim());
+        }
+      }
+    }
+
+    add(contents);
+    if (parts.isEmpty) return null;
+    return parts.join('\n\n').trim();
   }
 
   /// ヒット行と前後1行。ヒット行は `>`。
@@ -269,6 +339,45 @@ abstract final class CodingSymbolFormat {
     final end = math.min(lines.length, line + 1);
     final buf = StringBuffer();
     for (var n = start; n <= end; n++) {
+      final mark = n == line ? '>' : ' ';
+      buf.writeln(
+        '$mark${n.toString().padLeft(4)}| ${_clipLine(lines[n - 1], maxLineChars)}',
+      );
+    }
+    return buf.toString().trimRight();
+  }
+
+  /// パッケージ定義用。直前の doc comment と宣言周辺を広めに返す。
+  static String libraryContextBlock(
+    String source,
+    int line, {
+    int? maxLineChars,
+    int maxLines = maxLibraryContextLines,
+  }) {
+    final lines = source.split('\n');
+    if (line < 1 || line > lines.length) return '';
+    var start = line;
+    while (start > 1) {
+      final prev = lines[start - 2].trimLeft();
+      if (prev.startsWith('///') ||
+          prev.startsWith('*') ||
+          prev.startsWith('/**') ||
+          prev.startsWith('*/') ||
+          prev.isEmpty) {
+        start--;
+        continue;
+      }
+      break;
+    }
+    // 直前が doc でなければ、宣言の少し上も含める。
+    if (start == line) {
+      start = math.max(1, line - 2);
+    }
+    final end = math.min(lines.length, start + maxLines - 1);
+    final endHit = math.max(end, math.min(lines.length, line + 8));
+    final last = math.min(lines.length, math.max(end, endHit));
+    final buf = StringBuffer();
+    for (var n = start; n <= last; n++) {
       final mark = n == line ? '>' : ' ';
       buf.writeln(
         '$mark${n.toString().padLeft(4)}| ${_clipLine(lines[n - 1], maxLineChars)}',

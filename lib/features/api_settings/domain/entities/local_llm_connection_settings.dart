@@ -14,6 +14,7 @@ class LocalLlmConnectionSettings {
     this.codingContextSize = LocalLlmPresets.defaultCodingContextSize,
     this.codingThinkingEnabled = false,
     this.codingAutoApplyPatches = false,
+    this.codingAutoAllowReadFile = false,
     this.enabled = true,
     this.reasoningEffort,
   });
@@ -41,6 +42,10 @@ class LocalLlmConnectionSettings {
 
   /// S16 ツールバー「Agent自動実行」。変更案（Update）を確認なしで適用。既定 OFF。
   final bool codingAutoApplyPatches;
+
+  /// 自動実行 ON のときモデルの `read_file` を許可するか。既定 OFF（禁止）。
+  /// OFF のときは `不足:`／`read_file` で指名されたパスをアプリが開いて渡す。
+  final bool codingAutoAllowReadFile;
 
   /// ローカル LLM をアプリ機能で使うか。
   final bool enabled;
@@ -89,6 +94,10 @@ class LocalLlmConnectionSettings {
 
   bool get thinkingEnabled => codingThinkingEnabled;
 
+  /// 自動実行中にモデルへ `read_file` を禁じ、アプリ側で本文を渡すモードか。
+  bool get codingAutoOmitsReadFile =>
+      codingAutoApplyPatches && !codingAutoAllowReadFile;
+
   bool get hasEndpoint => host.trim().isNotEmpty && port > 0;
 
   /// コーディング用モデルが揃っているか（本アプリの設定完了条件）。
@@ -121,6 +130,7 @@ class LocalLlmConnectionSettings {
     int? codingContextSize,
     bool? codingThinkingEnabled,
     bool? codingAutoApplyPatches,
+    bool? codingAutoAllowReadFile,
     bool? enabled,
     String? reasoningEffort,
     bool clearCodingCustomModel = false,
@@ -143,6 +153,8 @@ class LocalLlmConnectionSettings {
           codingThinkingEnabled ?? this.codingThinkingEnabled,
       codingAutoApplyPatches:
           codingAutoApplyPatches ?? this.codingAutoApplyPatches,
+      codingAutoAllowReadFile:
+          codingAutoAllowReadFile ?? this.codingAutoAllowReadFile,
       enabled: enabled ?? this.enabled,
       reasoningEffort: clearReasoningEffort
           ? null
@@ -175,6 +187,7 @@ class LocalLlmConnectionSettings {
     int? codingContextSize,
     bool? codingThinkingEnabled,
     bool? codingAutoApplyPatches,
+    bool? codingAutoAllowReadFile,
     bool? enabled,
     // 旧キー（移行用。結果には会議／チャットスロットを持たない）
     String? legacyModelNameOrId,
@@ -224,6 +237,7 @@ class LocalLlmConnectionSettings {
       codingThinkingEnabled:
           codingThinkingEnabled ?? legacyThinkingEnabled ?? false,
       codingAutoApplyPatches: codingAutoApplyPatches ?? false,
+      codingAutoAllowReadFile: codingAutoAllowReadFile ?? false,
       enabled: enabled ?? true,
     );
   }

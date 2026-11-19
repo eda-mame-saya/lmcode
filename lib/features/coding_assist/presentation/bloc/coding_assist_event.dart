@@ -349,6 +349,24 @@ final class CodingAssistAgentAutoRunChanged extends CodingAssistEvent {
   List<Object?> get props => [enabled];
 }
 
+/// 自動実行 ON 時にモデルの `read_file` を許可するか。llama-server は再起動しない。
+final class CodingAssistAgentAutoAllowReadFileChanged extends CodingAssistEvent {
+  const CodingAssistAgentAutoAllowReadFileChanged(this.enabled);
+  final bool enabled;
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
+/// 版付きライブラリ docs（ローカル優先・不足時ネット）の ON/OFF。
+final class CodingAssistWebLibraryDocsChanged extends CodingAssistEvent {
+  const CodingAssistWebLibraryDocsChanged(this.enabled);
+  final bool enabled;
+
+  @override
+  List<Object?> get props => [enabled];
+}
+
 /// 自動実行後のスリープ設定。開始は自動実行が始まったとき。
 final class CodingAssistAutoSleepSettingsChanged extends CodingAssistEvent {
   const CodingAssistAutoSleepSettingsChanged(this.settings);

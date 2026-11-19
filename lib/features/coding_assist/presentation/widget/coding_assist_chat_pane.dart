@@ -432,6 +432,7 @@ class _ChatPane extends StatelessWidget {
                         selectionEnabled: hasEditorSelection,
                         taskEvaluateEnabled:
                             codingTaskEvaluationSource(state.messages) != null,
+                        webLibraryDocsEnabled: state.webLibraryDocsEnabled,
                         favorites: state.promptFavorites,
                         applied: state.appliedPromptActions,
                         onSelected: (action) {
@@ -443,12 +444,14 @@ class _ChatPane extends StatelessWidget {
                                 const CodingAssistTaskEvaluateRequested(),
                               );
                             case CodingPromptAction.errorAnalyze:
+                            case CodingPromptAction.reproduceError:
                             case CodingPromptAction.concise:
                             case CodingPromptAction.expectFileOutput:
                             case CodingPromptAction.expectFixProposal:
                             case CodingPromptAction.expectDocumentCreate:
                             case CodingPromptAction.expectDocumentEdit:
                             case CodingPromptAction.programAnalyze:
+                            case CodingPromptAction.fetchLatestDocs:
                             case CodingPromptAction.taskDecompose:
                             case CodingPromptAction.runFlutterVerify:
                               _togglePromptAction(context, action);

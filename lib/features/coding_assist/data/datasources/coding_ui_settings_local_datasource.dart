@@ -24,6 +24,7 @@ class CodingUiSettingsLocalDataSource {
       'coding_ui_auto_sleep_after_minutes';
   static const _prefHarness = 'coding_ui_harness';
   static const _prefNovel = 'coding_ui_novel';
+  static const _prefWebLibraryDocs = 'coding_ui_web_library_docs_enabled';
 
   /// インデント空白の既定（4）。
   static const defaultIndentSize = 4;
@@ -145,5 +146,14 @@ class CodingUiSettingsLocalDataSource {
       _prefNovel,
       jsonEncode(settings.toJson()),
     );
+  }
+
+  /// 版付きライブラリ docs（ローカル優先・不足時ネット）。既定 ON。
+  bool loadWebLibraryDocsEnabled() {
+    return _preferences.getBool(_prefWebLibraryDocs) ?? true;
+  }
+
+  Future<void> saveWebLibraryDocsEnabled(bool enabled) async {
+    await _preferences.setBool(_prefWebLibraryDocs, enabled);
   }
 }

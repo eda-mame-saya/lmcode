@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import 'coding_custom_prompt_id.dart';
 import 'coding_custom_prompts.dart';
+import 'coding_library_docs.dart';
 
 /// S16 ワークスペースの開発プロファイル。
 enum CodingWorkspaceKind {
@@ -415,15 +416,22 @@ $pathNotes
 {"name":"workspace_symbol","args":{"query":"ClassName"}}
 ```
 ```tool
+{"name":"hover","args":{"path":"lib/example.dart","line":10,"symbol":"Provider"}}
+```
+```tool
 {"name":"go_to_definition","args":{"path":"lib/example.dart","line":10,"symbol":"methodName"}}
 ```
 ```tool
 {"name":"find_references","args":{"path":"lib/example.dart","line":10,"symbol":"methodName"}}
 ```
+- 外部パッケージ／SDK の API は学習データで推測しない。import や呼び出しの上で hover（シグネチャ・doc）または go_to_definition（定義抜粋）を先に使う
 - 影響範囲は find_references。同名の別シンボルやコメントは返さない
 - 編集する関数の原文は read_file。参照一覧だけでは - 行を作らない
 - line は 1 始まり。symbol はその行にある識別子。column は 1 始まりで任意
 ''';
+
+  /// 版付き公式 docs（ローカル優先・ネット補完）。設定 ON のとき system に足す。
+  static String libraryDocsToolsFor() => codingLibraryDocsToolPromptBuiltIn;
 
   /// 互換エイリアス（組み込み既定）。
   static const symbolToolsPrompt = symbolToolsPromptBuiltIn;

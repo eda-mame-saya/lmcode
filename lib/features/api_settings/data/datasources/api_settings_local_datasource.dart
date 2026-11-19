@@ -38,6 +38,8 @@ class ApiSettingsLocalDataSource {
   static const _prefLocalLlmCodingThinking = 'local_llm_coding_thinking_enabled';
   static const _prefLocalLlmCodingAutoApply =
       'local_llm_coding_auto_apply_patches';
+  static const _prefLocalLlmCodingAutoAllowReadFile =
+      'local_llm_coding_auto_allow_read_file';
   static const _prefLocalLlmEnabled = 'local_llm_enabled';
   static const _prefDartSdkPath = 'dart_sdk_path';
   static const _prefCodingBackend = 'coding_llm_backend';
@@ -73,6 +75,8 @@ class ApiSettingsLocalDataSource {
       codingThinkingEnabled: _preferences.getBool(_prefLocalLlmCodingThinking),
       codingAutoApplyPatches:
           _preferences.getBool(_prefLocalLlmCodingAutoApply),
+      codingAutoAllowReadFile:
+          _preferences.getBool(_prefLocalLlmCodingAutoAllowReadFile),
       enabled: localEnabled,
       legacyModelNameOrId: localModel,
       legacyCustomModelId: _preferences.getString(_prefLocalLlmCustomId),
@@ -155,6 +159,10 @@ class ApiSettingsLocalDataSource {
     await _preferences.setBool(
       _prefLocalLlmCodingAutoApply,
       settings.localLlm.codingAutoApplyPatches,
+    );
+    await _preferences.setBool(
+      _prefLocalLlmCodingAutoAllowReadFile,
+      settings.localLlm.codingAutoAllowReadFile,
     );
     await _preferences.setBool(
       _prefLocalLlmEnabled,

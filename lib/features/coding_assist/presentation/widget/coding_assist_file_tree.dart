@@ -688,11 +688,13 @@ class _LeftMenuPaneState extends State<_LeftMenuPane> {
             onPressed: widget.onOpenFolder,
             child: const Text('フォルダを開く'),
           ),
-          const SizedBox(height: 8),
-          OutlinedButton(
-            onPressed: widget.onOpenNovelFolder,
-            child: const Text('小説ワークスペースを開く'),
-          ),
+          if (state.novelSettings.showUi) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              onPressed: widget.onOpenNovelFolder,
+              child: const Text('小説ワークスペースを開く'),
+            ),
+          ],
           if (state.recentWorkspaces.isNotEmpty) ...[
             const SizedBox(height: 16),
             const Text('最近'),

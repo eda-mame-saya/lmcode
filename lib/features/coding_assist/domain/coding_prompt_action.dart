@@ -2,12 +2,14 @@
 enum CodingPromptAction {
   attachSelection,
   errorAnalyze,
+  reproduceError,
   concise,
   expectFileOutput,
   expectFixProposal,
   expectDocumentCreate,
   expectDocumentEdit,
   programAnalyze,
+  fetchLatestDocs,
   taskDecompose,
   taskEvaluate,
   runFlutterVerify;
@@ -22,12 +24,14 @@ enum CodingPromptAction {
   String get shortLabel => switch (this) {
     attachSelection => '選択',
     errorAnalyze => 'エラー',
+    reproduceError => '再現',
     concise => '簡潔',
     expectFileOutput => '新規',
     expectFixProposal => '修正',
     expectDocumentCreate => '作成',
     expectDocumentEdit => '文書',
     programAnalyze => '分析',
+    fetchLatestDocs => '最新',
     taskDecompose => '分解',
     taskEvaluate => '評価',
     runFlutterVerify => 'テスト',
@@ -37,12 +41,14 @@ enum CodingPromptAction {
   String get menuLabel => switch (this) {
     attachSelection => 'セレクト範囲情報をプロンプトに貼り付け',
     errorAnalyze => 'エラー解析',
+    reproduceError => 'エラーの再現',
     concise => '簡潔に表示',
     expectFileOutput => '新規ソース提案を期待',
     expectFixProposal => '修正ソース提案を期待',
     expectDocumentCreate => 'ドキュメント作成を期待',
     expectDocumentEdit => '修正ドキュメント提案を期待',
     programAnalyze => 'プログラム分析',
+    fetchLatestDocs => '最新の情報を取得して調査',
     taskDecompose => 'タスク分解',
     taskEvaluate => 'タスク評価',
     runFlutterVerify => 'テストを実行',
@@ -75,15 +81,24 @@ enum CodingPromptAction {
     expectFileOutput ||
     expectFixProposal ||
     expectDocumentCreate ||
-    expectDocumentEdit => true,
+    expectDocumentEdit ||
+    reproduceError => true,
     _ => false,
   };
 
   /// 文書だけの＋なら、書き込み後の flutter analyze／test は走らせない。
   ///
   /// 新規ソース・修正ソース・エラー解析・テスト実行が同時なら検証する。
+  /// 「エラーの再現」だけのときは再現用テストを残すため検証ループに入らない。
   static bool skipsFlutterVerify(Iterable<CodingPromptAction> actions) {
     final set = actions.toSet();
+    if (set.contains(reproduceError) &&
+        !set.contains(expectFileOutput) &&
+        !set.contains(expectFixProposal) &&
+        !set.contains(errorAnalyze) &&
+        !set.contains(runFlutterVerify)) {
+      return true;
+    }
     final document =
         set.contains(expectDocumentCreate) || set.contains(expectDocumentEdit);
     if (!document) return false;
@@ -96,6 +111,7 @@ enum CodingPromptAction {
   /// 適用中の補助をトグルする。
   ///
   /// エラー解析は、最初の指示では他の補助と同時に付けない。
+  /// エラーの再現は、エラー解析・本番の即時修正期待と同時に付けない。
   /// タスク分解と、ソース／文書の出力期待も同時に付けない。
   /// 後から押した方がもう一方を外す。
   static CodingPromptToggle toggleApplied({
@@ -118,6 +134,21 @@ enum CodingPromptAction {
       }
     } else if (next.remove(CodingPromptAction.errorAnalyze)) {
       removed.add(CodingPromptAction.errorAnalyze);
+    }
+    if (action == CodingPromptAction.reproduceError) {
+      for (final other in const [
+        CodingPromptAction.errorAnalyze,
+        CodingPromptAction.expectFixProposal,
+        CodingPromptAction.expectFileOutput,
+        CodingPromptAction.taskDecompose,
+      ]) {
+        if (next.remove(other)) removed.add(other);
+      }
+    } else if (action == CodingPromptAction.expectFixProposal ||
+        action == CodingPromptAction.expectFileOutput) {
+      if (next.remove(CodingPromptAction.reproduceError)) {
+        removed.add(CodingPromptAction.reproduceError);
+      }
     }
     if (action == CodingPromptAction.taskDecompose) {
       for (final other in values) {

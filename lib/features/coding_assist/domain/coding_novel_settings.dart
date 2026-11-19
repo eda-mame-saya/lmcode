@@ -59,6 +59,7 @@ final class CodingNovelDialogueDelimiter {
 /// 小説ワークスペース向けの表示・整形設定（永続）。
 final class CodingNovelSettings {
   const CodingNovelSettings({
+    this.showUi = false,
     this.indentCount = defaultIndentCount,
     this.indentSpace = CodingNovelIndentSpace.fullWidth,
     this.indentDialogue = false,
@@ -73,6 +74,9 @@ final class CodingNovelSettings {
   static const minIndentCount = 0;
   static const maxIndentCount = 8;
   static const maxDialogueDelimiters = 12;
+
+  /// ツールバー／左メニューに小説ワークスペース入口を出すか（既定 OFF）。
+  final bool showUi;
 
   /// インデント文字数（0〜8）。
   final int indentCount;
@@ -109,6 +113,7 @@ final class CodingNovelSettings {
   }
 
   CodingNovelSettings copyWith({
+    bool? showUi,
     int? indentCount,
     CodingNovelIndentSpace? indentSpace,
     bool? indentDialogue,
@@ -118,6 +123,7 @@ final class CodingNovelSettings {
         ? this.dialogueDelimiters
         : _normalizeDelimiters(dialogueDelimiters);
     return CodingNovelSettings(
+      showUi: showUi ?? this.showUi,
       indentCount: (indentCount ?? this.indentCount)
           .clamp(minIndentCount, maxIndentCount),
       indentSpace: indentSpace ?? this.indentSpace,
@@ -142,6 +148,7 @@ final class CodingNovelSettings {
   }
 
   Map<String, dynamic> toJson() => {
+        'showUi': showUi,
         'indentCount': indentCount,
         'indentSpace': indentSpace.name,
         'indentDialogue': indentDialogue,
@@ -169,6 +176,7 @@ final class CodingNovelSettings {
       }
     }
     return CodingNovelSettings(
+      showUi: json['showUi'] == true,
       indentCount: count is int
           ? count.clamp(minIndentCount, maxIndentCount)
           : defaultIndentCount,
@@ -183,7 +191,8 @@ final class CodingNovelSettings {
   @override
   bool operator ==(Object other) {
     if (other is! CodingNovelSettings) return false;
-    if (other.indentCount != indentCount ||
+    if (other.showUi != showUi ||
+        other.indentCount != indentCount ||
         other.indentSpace != indentSpace ||
         other.indentDialogue != indentDialogue) {
       return false;
@@ -199,6 +208,7 @@ final class CodingNovelSettings {
 
   @override
   int get hashCode => Object.hash(
+        showUi,
         indentCount,
         indentSpace,
         indentDialogue,
