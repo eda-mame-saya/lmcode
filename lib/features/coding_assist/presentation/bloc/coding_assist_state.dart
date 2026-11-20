@@ -4,9 +4,11 @@ import 'package:intl/intl.dart';
 import '../../../api_settings/domain/entities/coding_llm_backend.dart';
 import '../../../api_settings/domain/entities/local_llm_connection_settings.dart';
 import '../../../api_settings/domain/entities/strata_connection_settings.dart';
+import '../../domain/coding_agent_progress.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../domain/coding_novel_settings.dart';
+import '../../domain/coding_pattern.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
@@ -26,6 +28,8 @@ final class CodingAssistState extends Equatable {
     this.strataContextSize,
     this.uiFontSizes = CodingUiFontSizes.defaults,
     this.harness = CodingHarnessSettings.defaults,
+    this.patternSelection = CodingPatternSelection.defaults,
+    this.appliedPatternSystem,
     this.webLibraryDocsEnabled = true,
     this.autoSleepSettings = const CodingAutoSleepSettings(),
     this.autoSleepArmed = false,
@@ -54,6 +58,7 @@ final class CodingAssistState extends Equatable {
     this.streamingText = '',
     this.generationTrace = '',
     this.agentStatusMessage,
+    this.agentProgress,
     this.mtpDraftFileName,
     this.workspaceStatusMessage,
     this.errorMessage,
@@ -86,6 +91,13 @@ final class CodingAssistState extends Equatable {
 
   /// Agent のハーネス定数。表示設定とは別に保存する。
   final CodingHarnessSettings harness;
+
+  /// 運用パターンの選択（コーディング／文章それぞれ）。
+  final CodingPatternSelection patternSelection;
+
+  /// 最後にプロファイルを展開した系統。null は未適用。
+  /// ワークスペース種別から決まる系統と違うときは、開いた時点で展開し直す。
+  final CodingPatternSystem? appliedPatternSystem;
 
   /// 版付きライブラリ docs（ローカル優先・不足時ネット）。既定 ON。
   final bool webLibraryDocsEnabled;
@@ -151,6 +163,9 @@ final class CodingAssistState extends Equatable {
 
   /// フッター左。起動・生成・ツール・検証・会話など Agent の進行。
   final String? agentStatusMessage;
+
+  /// フッター左の段階表示（生成→適用→analyze→test／修正 k/N）。生成中だけ見せる。
+  final CodingAgentProgress? agentProgress;
 
   /// 起動中の本体に付いている MTP 下書き係のファイル名。無いときは null。
   final String? mtpDraftFileName;
@@ -273,6 +288,8 @@ final class CodingAssistState extends Equatable {
     bool clearStrataContextSize = false,
     CodingUiFontSizes? uiFontSizes,
     CodingHarnessSettings? harness,
+    CodingPatternSelection? patternSelection,
+    CodingPatternSystem? appliedPatternSystem,
     bool? webLibraryDocsEnabled,
     CodingAutoSleepSettings? autoSleepSettings,
     bool? autoSleepArmed,
@@ -307,6 +324,8 @@ final class CodingAssistState extends Equatable {
     String? streamingText,
     String? generationTrace,
     String? agentStatusMessage,
+    CodingAgentProgress? agentProgress,
+    bool clearAgentProgress = false,
     String? mtpDraftFileName,
     bool clearMtpDraft = false,
     String? workspaceStatusMessage,
@@ -346,6 +365,8 @@ final class CodingAssistState extends Equatable {
           : (strataContextSize ?? this.strataContextSize),
       uiFontSizes: uiFontSizes ?? this.uiFontSizes,
       harness: harness ?? this.harness,
+      patternSelection: patternSelection ?? this.patternSelection,
+      appliedPatternSystem: appliedPatternSystem ?? this.appliedPatternSystem,
       webLibraryDocsEnabled:
           webLibraryDocsEnabled ?? this.webLibraryDocsEnabled,
       autoSleepSettings: autoSleepSettings ?? this.autoSleepSettings,
@@ -403,6 +424,9 @@ final class CodingAssistState extends Equatable {
       agentStatusMessage: clearAgentStatus
           ? null
           : (agentStatusMessage ?? this.agentStatusMessage),
+      agentProgress: clearAgentProgress
+          ? null
+          : (agentProgress ?? this.agentProgress),
       mtpDraftFileName: clearMtpDraft
           ? null
           : (mtpDraftFileName ?? this.mtpDraftFileName),
@@ -436,6 +460,8 @@ final class CodingAssistState extends Equatable {
     localLlm.codingCustomGgufFileName,
     localLlm.codingContextSize,
     harness,
+    patternSelection,
+    appliedPatternSystem,
     webLibraryDocsEnabled,
     localLlm.codingThinkingEnabled,
     localLlm.codingAutoApplyPatches,
@@ -486,6 +512,7 @@ final class CodingAssistState extends Equatable {
     streamingText,
     generationTrace,
     agentStatusMessage,
+    agentProgress,
     mtpDraftFileName,
     workspaceStatusMessage,
     errorMessage,

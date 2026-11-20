@@ -37,11 +37,26 @@ class _StatusBar extends StatelessWidget {
             const SizedBox(width: 12),
             Expanded(
               flex: 3,
-              child: Text(
-                agentProgress,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12),
+              child: Row(
+                children: [
+                  if (state.isGenerating && state.agentProgress != null) ...[
+                    _AgentPhaseStepper(
+                      progress: state.agentProgress!,
+                      verifyExpected:
+                          state.localLlm.codingAutoApplyPatches &&
+                          state.index?.kind == CodingWorkspaceKind.flutter,
+                    ),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: Text(
+                      agentProgress,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
               ),
             ),
             const SizedBox(width: 12),
@@ -73,6 +88,84 @@ class _StatusBar extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 自動実行の段階。「修正 2/3」の次に「生成 › 適用 › analyze › test」を並べ、
+/// いまの段階を強調する。検証に進まない見込みのときは、いまの段階だけ見せる。
+class _AgentPhaseStepper extends StatelessWidget {
+  const _AgentPhaseStepper({
+    required this.progress,
+    required this.verifyExpected,
+  });
+
+  final CodingAgentProgress progress;
+  final bool verifyExpected;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final stages = progress.stages(verifyExpected: verifyExpected);
+    final currentIndex = stages.indexOf(progress.phase);
+    final children = <Widget>[];
+    if (progress.inFix) {
+      children
+        ..add(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(
+              color: scheme.errorContainer,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              progress.fixLabel,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: scheme.onErrorContainer,
+              ),
+            ),
+          ),
+        )
+        ..add(const SizedBox(width: 6));
+    }
+    for (var n = 0; n < stages.length; n++) {
+      if (n > 0) {
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 3),
+            child: Icon(
+              Icons.chevron_right,
+              size: 12,
+              color: scheme.outline,
+            ),
+          ),
+        );
+      }
+      final isCurrent = n == currentIndex;
+      final isDone = n < currentIndex;
+      children.add(
+        Text(
+          stages[n].label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w400,
+            color: isCurrent
+                ? scheme.primary
+                : isDone
+                ? scheme.onSurfaceVariant
+                : scheme.outline,
+            decoration: isDone ? TextDecoration.lineThrough : null,
+          ),
+        ),
+      );
+    }
+    return Tooltip(
+      message: progress.inFix
+          ? '自動修正 ${progress.fixSet}/${progress.fixMax} セット目の進行'
+          : '自動実行の進行',
+      child: Row(mainAxisSize: MainAxisSize.min, children: children),
     );
   }
 }

@@ -28,6 +28,9 @@ import '../../../../core/widgets/brand_confirm_dialog.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_debug_exchange.dart';
 import '../../domain/coding_harness_settings.dart';
+import '../../domain/coding_agent_flow.dart';
+import '../../domain/coding_agent_progress.dart';
+import '../../domain/coding_pattern.dart';
 import '../../domain/coding_dart_definition.dart';
 import '../../domain/coding_editor_file_link.dart';
 import '../../domain/coding_editor_split.dart';
@@ -66,6 +69,7 @@ import '../widget/coding_flutter_create_dialog.dart';
 import '../widget/coding_terminal_panel.dart';
 import '../widget/coding_user_prompt_preview.dart';
 
+part '../widget/coding_assist_agent_flow_dialog.dart';
 part '../widget/coding_assist_chat_pane.dart';
 part '../widget/coding_assist_dialogs.dart';
 part '../widget/coding_assist_settings_dialog.dart';
@@ -786,6 +790,7 @@ class _CodingAssistViewState extends State<_CodingAssistView> {
             p.usedTokens == c.usedTokens &&
             p.warningLevel == c.warningLevel &&
             p.agentStatusMessage == c.agentStatusMessage &&
+            p.agentProgress == c.agentProgress &&
             p.mtpDraftFileName == c.mtpDraftFileName &&
             p.workspaceStatusMessage == c.workspaceStatusMessage &&
             p.draft == c.draft &&

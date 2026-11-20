@@ -203,6 +203,12 @@ class _ChatPane extends StatelessWidget {
                         visualDensity: VisualDensity.compact,
                       ),
                     IconButton(
+                      tooltip: 'Agent の動きを見る（いまの入力の場合）',
+                      onPressed: () => showCodingAgentFlowDialog(context),
+                      icon: const Icon(Icons.account_tree_outlined, size: 20),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    IconButton(
                       tooltip: 'ヒストリー',
                       onPressed: state.workspaceRoot == null
                           ? null

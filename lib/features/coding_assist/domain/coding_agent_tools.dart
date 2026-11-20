@@ -13,12 +13,13 @@ import 'coding_text_file.dart';
 import 'coding_workspace_scan.dart';
 
 /// 版付きライブラリ docs 取得。未設定なら tool は案内のみ返す。
-typedef CodingLibraryDocsFetch = Future<String> Function({
-  required String library,
-  required String query,
-  String? version,
-  String ecosystem,
-});
+typedef CodingLibraryDocsFetch =
+    Future<String> Function({
+      required String library,
+      required String query,
+      String? version,
+      String ecosystem,
+    });
 
 /// 検査文に添える依頼文の最大文字数。
 const codingFixedPromptRequestChars = 400;
@@ -571,10 +572,33 @@ String codingAttachedFileReadRefused(String relativePath) =>
     '$relativePath は送信時に添付済みです。'
     '本文は【開いているファイル】にあります。このファイルは開いていません。';
 
-/// このバッチの5件に入らなかった新規 `read_file`。
-String codingReadBatchDeferredMessage(String relativePath) =>
-    '$relativePath はこのバッチの read_file $codingReadFilesPerBatch件に入らなかったため、開いていません。'
+/// このバッチの件数上限に入らなかった新規 `read_file`。
+///
+/// [limit] は運用パターンの `readFilesPerBatch`。省略時は [codingReadFilesPerBatch]。
+String codingReadBatchDeferredMessage(
+  String relativePath, {
+  int limit = codingReadFilesPerBatch,
+}) =>
+    '$relativePath はこのバッチの read_file $limit件に入らなかったため、開いていません。'
     '次の応答で読み直せます。';
+
+/// 1回の応答の読取合計予算を使い切ったため開かなかった新規 `read_file`。
+String codingReadBudgetDeferredMessage(String relativePath) =>
+    '$relativePath はこの応答の読取の合計上限に達したため、開いていません。'
+    '次の応答で読み直せます。';
+
+/// 1回の応答の読取合計予算（文字数）。
+///
+/// [contextSize] は ctx（トークン）。[charsPerToken]×[ratio] で文字数に直す。
+/// 0 以下の入力は予算なし（null）。
+int? codingReadBudgetChars({
+  required int contextSize,
+  required double charsPerToken,
+  required double ratio,
+}) {
+  if (contextSize <= 0 || charsPerToken <= 0 || ratio <= 0) return null;
+  return (contextSize * charsPerToken * ratio).floor();
+}
 
 /// バッチのあと、既読と未読を伝える文。
 ///

@@ -3,7 +3,7 @@
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 ローカル LLM を中核にした **デスクトップ向けコーディングアシスト**（Flutter）。  
-端末上の `llama-server`（llama.cpp）と GGUF モデルで Agent・編集・ターミナルを使えます。オフライン完結は前提ではなく、必要に応じて Web 上の公開データを参照してローカル LLM の弱みを補う方針です。
+**クライアント PC で現実的な速度**を重視し、おおよそ **10B〜26B** 級の GGUF を想定します（速度優先では Gemma 4 系など 〜12B）。端末上の `llama-server`（llama.cpp）で Agent・編集・ターミナルを使えます。オフライン完結は前提ではなく、必要に応じて Web／ローカル参照で弱みを補います。大規模ローカル LLM 連携は限定的です。
 
 ```text
 起動（S16）
@@ -41,7 +41,7 @@
 | 項目 | 推奨 |
 |------|------|
 | OS | macOS または Windows 10/11（64bit） |
-| メモリ | **32GB 以上**（14B 級 GGUF・128k ctx 想定） |
+| メモリ | **標準 16〜32GB**（10B〜14B 級・速度優先）。拡張で 〜26B |
 | ディスク | アプリ＋ユーザー用意の GGUF 分 |
 | ネット | **必須ではない**が前提にもしない。編集・ローカル LLM はオフラインでも可。モデル取得や Web 参照はネット要 |
 | 開発ツール | [Flutter](https://docs.flutter.dev/get-started/install) stable（SDK 制約: Dart `^3.11.0`） |
@@ -128,9 +128,11 @@ build/macos/Build/Products/Release/lmcode.app
 
 #### モデルの目安
 
-- コーディング用途は **14B 級以上**の GGUF を想定
+- 実運用想定は **10B〜26B**。速度優先では **〜12B**（例: Gemma 4 系）
 - 例（任意）: [unsloth/gemma-4-12b-it-GGUF](https://huggingface.co/unsloth/gemma-4-12b-it-GGUF)  
   - MTP（下書き係）を使う場合の配置メモは [`document/配布方法/mac/README.md`](document/配布方法/mac/README.md)
+- 運用パターン（軽快／標準／深掘り・文章／コーディング別）の方針: [`document/基本設計/10_クライアント実運用と運用パターン_実装方針.md`](document/基本設計/10_クライアント実運用と運用パターン_実装方針.md)  
+  進捗: [`document/基本設計/12_方向再整備_実施状況.md`](document/基本設計/12_方向再整備_実施状況.md)
 
 **モデルのライセンス・利用条件はダウンロード元に従い、利用者自身が確認・遵守してください。**
 
@@ -223,6 +225,8 @@ lmcode/
 | 2 | [`document/詳細設計/画面/00_画面一覧と遷移.md`](document/詳細設計/画面/00_画面一覧と遷移.md) | 画面マップ |
 | 3 | [`document/詳細設計/画面/S16_コーディングアシスト.md`](document/詳細設計/画面/S16_コーディングアシスト.md) | 主機能 |
 | 4 | [`document/詳細設計/画面/S11_エンジン設定.md`](document/詳細設計/画面/S11_エンジン設定.md) | LLM／SDK 設定 |
+| — | [`document/基本設計/10_クライアント実運用と運用パターン_実装方針.md`](document/基本設計/10_クライアント実運用と運用パターン_実装方針.md) | 実運用・運用パターン |
+| — | [`document/基本設計/12_方向再整備_実施状況.md`](document/基本設計/12_方向再整備_実施状況.md) | 再整備の進捗一覧 |
 | — | [`document/配布方法/`](document/配布方法/) | mac／Windows 配布メモ |
 
 ---

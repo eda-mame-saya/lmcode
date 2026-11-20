@@ -44,6 +44,8 @@ class CodingHarnessSettings extends Equatable {
     this.maxAutoReproposals = 1,
     this.maxReadFailuresPerPath = 3,
     this.maxReadChars = 80000,
+    this.readFilesPerBatch = 5,
+    this.readBudgetRatio = 0.5,
     this.toolResultClipChars = 12000,
     this.maxGrepHits = 40,
     this.maxListEntries = 200,
@@ -100,6 +102,12 @@ class CodingHarnessSettings extends Equatable {
   final int maxAutoReproposals;
   final int maxReadFailuresPerPath;
   final int maxReadChars;
+
+  /// 1回のモデル応答で新たに開く `read_file` の件数（運用パターン K01）。
+  final int readFilesPerBatch;
+
+  /// 1回の応答の `read_file` 合計を、ctx×文字／トークンのこの割合までに抑える（運用パターン X09）。
+  final double readBudgetRatio;
   final int toolResultClipChars;
   final int maxGrepHits;
   final int maxListEntries;
@@ -319,6 +327,34 @@ class CodingHarnessSettings extends Equatable {
       max: 500000,
       read: (s) => s.maxReadChars,
       write: (s, v) => s.copyWith(maxReadChars: v.round()),
+    ),
+    CodingHarnessField(
+      id: 'readFilesPerBatch',
+      group: 'ツール',
+      label: 'read_file 件数／応答',
+      hint:
+          '1回のモデル応答で新たに開く read_file の件数。既読の再指定は数えない。'
+          '上げると1往復で多くのファイルを読める。使用見込みも増える。'
+          '下げると残りは次の応答で読み直す。',
+      kind: CodingHarnessValueKind.intValue,
+      min: 1,
+      max: 20,
+      read: (s) => s.readFilesPerBatch,
+      write: (s, v) => s.copyWith(readFilesPerBatch: v.round()),
+    ),
+    CodingHarnessField(
+      id: 'readBudgetRatio',
+      group: 'ツール',
+      label: '読取合計の予算（ctx 比）',
+      hint:
+          '1回の応答で read_file が返す本文の合計を、ctx×文字／トークンのこの割合までに抑える。'
+          '超えた分の新規読取は次の応答へ回す。'
+          '上げると1往復で多く読める。下げると ctx を読取で使い切りにくい。',
+      kind: CodingHarnessValueKind.doubleValue,
+      min: 0.1,
+      max: 1,
+      read: (s) => s.readBudgetRatio,
+      write: (s, v) => s.copyWith(readBudgetRatio: v.toDouble()),
     ),
     CodingHarnessField(
       id: 'toolResultClipChars',
@@ -951,6 +987,8 @@ class CodingHarnessSettings extends Equatable {
     int? maxAutoReproposals,
     int? maxReadFailuresPerPath,
     int? maxReadChars,
+    int? readFilesPerBatch,
+    double? readBudgetRatio,
     int? toolResultClipChars,
     int? maxGrepHits,
     int? maxListEntries,
@@ -1007,6 +1045,8 @@ class CodingHarnessSettings extends Equatable {
       maxReadFailuresPerPath:
           maxReadFailuresPerPath ?? this.maxReadFailuresPerPath,
       maxReadChars: maxReadChars ?? this.maxReadChars,
+      readFilesPerBatch: readFilesPerBatch ?? this.readFilesPerBatch,
+      readBudgetRatio: readBudgetRatio ?? this.readBudgetRatio,
       toolResultClipChars: toolResultClipChars ?? this.toolResultClipChars,
       maxGrepHits: maxGrepHits ?? this.maxGrepHits,
       maxListEntries: maxListEntries ?? this.maxListEntries,

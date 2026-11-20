@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../domain/coding_novel_settings.dart';
+import '../../domain/coding_pattern.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
 
@@ -25,6 +26,9 @@ class CodingUiSettingsLocalDataSource {
   static const _prefHarness = 'coding_ui_harness';
   static const _prefNovel = 'coding_ui_novel';
   static const _prefWebLibraryDocs = 'coding_ui_web_library_docs_enabled';
+  static const _prefPatternCoding = 'coding_pattern_coding';
+  static const _prefPatternWriting = 'coding_pattern_writing';
+  static const _prefPatternAppliedSystem = 'coding_pattern_applied_system';
 
   /// インデント空白の既定（4）。
   static const defaultIndentSize = 4;
@@ -155,5 +159,33 @@ class CodingUiSettingsLocalDataSource {
 
   Future<void> saveWebLibraryDocsEnabled(bool enabled) async {
     await _preferences.setBool(_prefWebLibraryDocs, enabled);
+  }
+
+  /// 運用パターンの選択（未設定は系統ごとに「標準」）。
+  CodingPatternSelection loadPatternSelection() {
+    return CodingPatternSelection(
+      coding: CodingPatternLevel.fromId(
+        _preferences.getString(_prefPatternCoding),
+      ),
+      writing: CodingPatternLevel.fromId(
+        _preferences.getString(_prefPatternWriting),
+      ),
+    );
+  }
+
+  Future<void> savePatternSelection(CodingPatternSelection selection) async {
+    await _preferences.setString(_prefPatternCoding, selection.coding.id);
+    await _preferences.setString(_prefPatternWriting, selection.writing.id);
+  }
+
+  /// 最後にプロファイルを適用した系統。null は「まだ適用していない」（初回）。
+  CodingPatternSystem? loadAppliedPatternSystem() {
+    return CodingPatternSystem.tryFromId(
+      _preferences.getString(_prefPatternAppliedSystem),
+    );
+  }
+
+  Future<void> saveAppliedPatternSystem(CodingPatternSystem system) async {
+    await _preferences.setString(_prefPatternAppliedSystem, system.id);
   }
 }

@@ -5,6 +5,7 @@ import '../../../api_settings/domain/entities/strata_thinking_effort.dart';
 import '../../domain/coding_auto_sleep.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../domain/coding_novel_settings.dart';
+import '../../domain/coding_pattern.dart';
 import '../../domain/coding_patch.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_ui_font_sizes.dart';
@@ -398,6 +399,27 @@ final class CodingAssistHarnessChanged extends CodingAssistEvent {
 
   @override
   List<Object?> get props => [settings];
+}
+
+/// 運用パターン（軽快／標準／深掘り）の選択。
+///
+/// 選んだ系統が現在のワークスペースの系統と同じとき、または [force] のとき、
+/// プロファイル（ctx／thinking／ハーネス）をその場で展開する。
+final class CodingAssistPatternChanged extends CodingAssistEvent {
+  const CodingAssistPatternChanged(
+    this.system,
+    this.level, {
+    this.force = false,
+  });
+
+  final CodingPatternSystem system;
+  final CodingPatternLevel level;
+
+  /// 系統が現在のワークスペースと違っても展開する（「パターンの値に戻す」用）。
+  final bool force;
+
+  @override
+  List<Object?> get props => [system, level, force];
 }
 
 final class CodingAssistUiFontSizesChanged extends CodingAssistEvent {

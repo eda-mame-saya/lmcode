@@ -30,6 +30,11 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
               p.indentSize != c.indentSize ||
               p.novelSettings != c.novelSettings ||
               p.harness != c.harness ||
+              p.patternSelection != c.patternSelection ||
+              p.appliedPatternSystem != c.appliedPatternSystem ||
+              p.index?.kind != c.index?.kind ||
+              p.localLlm.codingContextSize != c.localLlm.codingContextSize ||
+              p.codingBackend != c.codingBackend ||
               p.localLlm.codingThinkingEnabled !=
                   c.localLlm.codingThinkingEnabled ||
               p.localLlm.codingAutoApplyPatches !=
@@ -42,6 +47,9 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
               p.isLlmBusy != c.isLlmBusy,
           builder: (context, state) {
             final busy = state.isGenerating || state.isLlmBusy;
+            final activeSystem = CodingPatternProfiles.systemFor(
+              state.index?.kind,
+            );
             final groups = <String, List<CodingHarnessField>>{};
             for (final field in CodingHarnessSettings.fields) {
               groups.putIfAbsent(field.group, () => []).add(field);
@@ -104,6 +112,30 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
                 ),
                 const Divider(),
                 _NovelWritingSettingsSection(settings: state.novelSettings),
+                const Divider(),
+                const _SettingsSectionTitle('運用パターン'),
+                Text(
+                  '細かい数値はパターンがまとめて決めます（ctx・返答の長さ・ループ回数・検証・履歴の保持など）。'
+                  'モデルと「自動実行」は別に設定します。',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).hintColor,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                for (final system in CodingPatternSystem.values)
+                  _PatternRow(
+                    system: system,
+                    level: state.patternSelection.levelOf(system),
+                    isActive:
+                        activeSystem == system &&
+                        state.appliedPatternSystem == system,
+                    isWorkspaceSystem: activeSystem == system,
+                    contextSize: state.localLlm.codingContextSize,
+                    thinkingEnabled: state.localLlm.codingThinkingEnabled,
+                    backend: state.codingBackend,
+                    busy: busy,
+                  ),
                 const Divider(),
                 const _SettingsSectionTitle('Agent'),
                 if (state.codingBackend == CodingLlmBackend.strata)
@@ -204,40 +236,12 @@ class _CodingAssistSettingsDialog extends StatelessWidget {
                   onTap: () => showCodingAssistAutoSleepDialog(context),
                 ),
                 const Divider(),
-                const _SettingsSectionTitle('ハーネス'),
-                Text(
-                  '既定はこれまでの固定値です。変えた値は次の送信から使います。'
-                  '索引の件数は、次にフォルダを走査したときから使います。',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).hintColor,
-                  ),
-                ),
-                for (final entry in groups.entries) ...[
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12, bottom: 4),
-                    child: Text(
-                      entry.key,
-                      style: const TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                  for (final field in entry.value)
-                    _HarnessNumberRow(
-                      key: ValueKey(field.id),
-                      field: field,
-                      settings: state.harness,
-                    ),
-                ],
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    onPressed: () => context.read<CodingAssistBloc>().add(
-                      const CodingAssistHarnessChanged(
-                        CodingHarnessSettings.defaults,
-                      ),
-                    ),
-                    child: const Text('ハーネスを既定に戻す'),
-                  ),
+                _HarnessAdvancedSection(
+                  groups: groups,
+                  harness: state.harness,
+                  activeSystem: activeSystem,
+                  activeLevel: state.patternSelection.levelOf(activeSystem),
+                  busy: busy,
                 ),
                 const Divider(),
                 const _SettingsSectionTitle('このアプリについて'),
@@ -289,6 +293,195 @@ class _SettingsSectionTitle extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Text(text, style: Theme.of(context).textTheme.titleMedium),
+    );
+  }
+}
+
+/// 運用パターン 1 系統分（コーディング／文章）の選択行。
+class _PatternRow extends StatelessWidget {
+  const _PatternRow({
+    required this.system,
+    required this.level,
+    required this.isActive,
+    required this.isWorkspaceSystem,
+    required this.contextSize,
+    required this.thinkingEnabled,
+    required this.backend,
+    required this.busy,
+  });
+
+  final CodingPatternSystem system;
+  final CodingPatternLevel level;
+
+  /// いま展開済みの系統（ハーネスがこのパターンの値になっている）。
+  final bool isActive;
+
+  /// 開いているワークスペースがこの系統（小説＝文章、それ以外＝コーディング）。
+  final bool isWorkspaceSystem;
+  final int contextSize;
+  final bool thinkingEnabled;
+  final CodingLlmBackend backend;
+  final bool busy;
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = Theme.of(context).hintColor;
+    final profile = CodingPatternProfiles.of(system, level);
+    final scope = switch (system) {
+      CodingPatternSystem.coding => '小説以外のワークスペース',
+      CodingPatternSystem.writing => '小説ワークスペース',
+    };
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              SizedBox(
+                width: 120,
+                child: Text(
+                  system.label,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              SegmentedButton<CodingPatternLevel>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final l in CodingPatternLevel.values)
+                    ButtonSegment(value: l, label: Text(l.label)),
+                ],
+                selected: {level},
+                onSelectionChanged: busy
+                    ? null
+                    : (next) => context.read<CodingAssistBloc>().add(
+                        CodingAssistPatternChanged(system, next.first),
+                      ),
+              ),
+              const SizedBox(width: 8),
+              if (isWorkspaceSystem)
+                Text(
+                  isActive ? '適用中' : '切替待ち',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isActive
+                        ? Theme.of(context).colorScheme.primary
+                        : hint,
+                  ),
+                ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 120, top: 2),
+            child: Text(
+              '$scope用。${profile.summary}',
+              style: TextStyle(fontSize: 12, color: hint),
+            ),
+          ),
+          if (isWorkspaceSystem)
+            Padding(
+              padding: const EdgeInsets.only(left: 120, top: 2),
+              child: Text(
+                backend == CodingLlmBackend.llamaCpp
+                    ? '現在: ctx $contextSize ／ 思考 ${thinkingEnabled ? "ON" : "OFF"}'
+                          '（ctx・思考を変えるときは llama-server を再起動します）'
+                    : 'Strata 利用中は ctx・思考は変えません（ハーネスのみ適用）',
+                style: TextStyle(fontSize: 12, color: hint),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// ハーネス個別編集（折りたたみ・既定は閉）。パターンを選び直すと上書きされる。
+class _HarnessAdvancedSection extends StatefulWidget {
+  const _HarnessAdvancedSection({
+    required this.groups,
+    required this.harness,
+    required this.activeSystem,
+    required this.activeLevel,
+    required this.busy,
+  });
+
+  final Map<String, List<CodingHarnessField>> groups;
+  final CodingHarnessSettings harness;
+  final CodingPatternSystem activeSystem;
+  final CodingPatternLevel activeLevel;
+  final bool busy;
+
+  @override
+  State<_HarnessAdvancedSection> createState() =>
+      _HarnessAdvancedSectionState();
+}
+
+class _HarnessAdvancedSectionState extends State<_HarnessAdvancedSection> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final hint = Theme.of(context).hintColor;
+    // ListView 内の ExpansionTile + TextField は縦制約が外れやすいので手動折りたたみにする。
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text(
+            '詳細（上級者向け）ハーネス',
+            style: TextStyle(fontWeight: FontWeight.w500),
+          ),
+          subtitle: Text(
+            _expanded
+                ? '個別に変えた値は、パターンを選び直すと上書きされます。'
+                : '通常は触りません。パターンが値をまとめて決めます',
+            style: TextStyle(fontSize: 12, color: hint),
+          ),
+          trailing: Icon(_expanded ? Icons.expand_less : Icons.expand_more),
+          onTap: () => setState(() => _expanded = !_expanded),
+        ),
+        if (_expanded) ...[
+          Text(
+            '変えた値は次の送信から使います。'
+            '索引の件数は、次にフォルダを走査したときから使います。',
+            style: TextStyle(fontSize: 12, color: hint),
+          ),
+          for (final entry in widget.groups.entries) ...[
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 4),
+              child: Text(
+                entry.key,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            for (final field in entry.value)
+              _HarnessNumberRow(
+                key: ValueKey(field.id),
+                field: field,
+                settings: widget.harness,
+              ),
+          ],
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton(
+              onPressed: widget.busy
+                  ? null
+                  : () => context.read<CodingAssistBloc>().add(
+                      CodingAssistPatternChanged(
+                        widget.activeSystem,
+                        widget.activeLevel,
+                        force: true,
+                      ),
+                    ),
+              child: Text(
+                '現在のパターン（${widget.activeSystem.label}・'
+                '${widget.activeLevel.label}）の値に戻す',
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

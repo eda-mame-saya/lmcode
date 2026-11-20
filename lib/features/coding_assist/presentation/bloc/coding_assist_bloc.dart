@@ -32,7 +32,10 @@ import '../../domain/coding_flutter_verify_policy.dart';
 import '../../domain/coding_git.dart';
 import '../../domain/coding_harness_settings.dart';
 import '../../data/datasources/coding_ui_settings_local_datasource.dart';
+import '../../domain/coding_agent_progress.dart';
+import '../../domain/coding_pattern.dart';
 import '../../domain/coding_patch.dart';
+import '../../domain/coding_verify_next_steps.dart';
 import '../../domain/coding_path_resolver.dart';
 import '../../domain/coding_prompt_action.dart';
 import '../../domain/coding_pubspec_package_change.dart';
@@ -121,6 +124,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     on<CodingAssistWebLibraryDocsChanged>(_onWebLibraryDocsChanged);
     on<CodingAssistUiFontSizesChanged>(_onUiFontSizesChanged);
     on<CodingAssistHarnessChanged>(_onHarnessChanged);
+    on<CodingAssistPatternChanged>(_onPatternChanged);
     on<CodingAssistAutoSleepSettingsChanged>(_onAutoSleepSettingsChanged);
     on<CodingAssistAutoSleepCancelled>(_onAutoSleepCancelled);
     on<CodingAssistAutoSleepDeadlineReached>(_onAutoSleepDeadlineReached);
@@ -264,6 +268,13 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
 
   /// 生成中に同じ段落が続いた。ユーザーの停止とは別。
   bool _repeatAbort = false;
+
+  /// フッターの段階表示。自動修正中は何セット目かも載せる（12 V4）。
+  CodingAgentProgress _progress(CodingAgentPhase phase) => CodingAgentProgress(
+    phase,
+    fixSet: _verifyFixSetsUsed,
+    fixMax: state.harness.maxVerifySets,
+  );
 
   void _resetFlutterVerifyCycle() {
     _verifyFixSetsUsed = 0;
@@ -571,9 +582,12 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     int? strataCtx;
     var recent = <String>[];
     final uiFonts = _uiSettingsLocalDataSource.loadFontSizes();
-    final harness = _uiSettingsLocalDataSource.loadHarness();
-    final webLibraryDocs =
-        _uiSettingsLocalDataSource.loadWebLibraryDocsEnabled();
+    var harness = _uiSettingsLocalDataSource.loadHarness();
+    final patternSelection = _uiSettingsLocalDataSource.loadPatternSelection();
+    var appliedPatternSystem = _uiSettingsLocalDataSource
+        .loadAppliedPatternSystem();
+    final webLibraryDocs = _uiSettingsLocalDataSource
+        .loadWebLibraryDocsEnabled();
     final autoSleep = _uiSettingsLocalDataSource.loadAutoSleepSettings();
     final indentSize = _uiSettingsLocalDataSource.loadIndentSize();
     final novelSettings = _uiSettingsLocalDataSource.loadNovelSettings();
@@ -588,6 +602,31 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         );
         try {
           await _saveConnectionSettings(settings);
+        } catch (_) {}
+      }
+      // 運用パターンの初回適用（14 DR-03）。サイドカー起動前に ctx／thinking／ハーネスを
+      // コーディング系統のプロファイルへ揃える。2 回目以降は S11 等の手動変更を尊重する。
+      if (appliedPatternSystem == null) {
+        final profile = CodingPatternProfiles.of(
+          CodingPatternSystem.coding,
+          patternSelection.coding,
+        );
+        harness = profile.harness.normalized();
+        if (settings.codingBackend == CodingLlmBackend.llamaCpp) {
+          settings = settings.copyWith(
+            localLlm: settings.localLlm.copyWith(
+              codingContextSize: profile.contextSize,
+              codingThinkingEnabled: profile.thinkingEnabled,
+            ),
+          );
+        }
+        appliedPatternSystem = CodingPatternSystem.coding;
+        try {
+          await _saveConnectionSettings(settings);
+          await _uiSettingsLocalDataSource.saveHarness(harness);
+          await _uiSettingsLocalDataSource.saveAppliedPatternSystem(
+            CodingPatternSystem.coding,
+          );
         } catch (_) {}
       }
       llm = settings.localLlm;
@@ -660,6 +699,8 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         clearStrataContextSize: strataCtx == null,
         uiFontSizes: uiFonts,
         harness: harness,
+        patternSelection: patternSelection,
+        appliedPatternSystem: appliedPatternSystem,
         webLibraryDocsEnabled: webLibraryDocs,
         autoSleepSettings: autoSleep,
         indentSize: indentSize,
@@ -952,6 +993,136 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     }
   }
 
+  /// 運用パターンの選択。選択は常に保存し、現在の系統と同じときは展開する。
+  Future<void> _onPatternChanged(
+    CodingAssistPatternChanged event,
+    Emitter<CodingAssistState> emit,
+  ) async {
+    final selection = state.patternSelection.withLevel(
+      event.system,
+      event.level,
+    );
+    if (selection != state.patternSelection) {
+      emit(state.copyWith(patternSelection: selection));
+      try {
+        await _uiSettingsLocalDataSource.savePatternSelection(selection);
+      } catch (e) {
+        emit(state.copyWith(errorMessage: 'パターンの保存に失敗: $e'));
+      }
+    }
+    final activeSystem = CodingPatternProfiles.systemFor(state.index?.kind);
+    if (event.force || event.system == activeSystem) {
+      await _applyPatternProfile(emit, event.system, event.level);
+    }
+  }
+
+  /// プロファイルを ctx／thinking／ハーネスへ展開する（14 DR-03／DR-07）。
+  ///
+  /// 生成中・サーバ切替中は何もしない（[state.appliedPatternSystem] を変えないので
+  /// 次の機会に再試行される）。ctx／thinking が変わるときだけ `llama-server` を再起動する。
+  Future<void> _applyPatternProfile(
+    Emitter<CodingAssistState> emit,
+    CodingPatternSystem system,
+    CodingPatternLevel level,
+  ) async {
+    if (state.isGenerating || state.isLlmBusy) return;
+    final profile = CodingPatternProfiles.of(system, level);
+    final harness = profile.harness.normalized();
+    final label = '${system.label}・${level.label}';
+
+    // 1. ハーネス（再起動不要）。
+    emit(
+      state.copyWith(
+        harness: harness,
+        appliedPatternSystem: system,
+        usedTokens: _estimateUsedTokens(harness: harness),
+        warningLevel: _warningFor(
+          _estimateUsedTokens(harness: harness),
+          harness: harness,
+        ),
+        agentStatusMessage: 'パターン: $label',
+      ),
+    );
+    symbolIndex?.applyHarness(harness);
+    try {
+      await _uiSettingsLocalDataSource.saveHarness(harness);
+      await _uiSettingsLocalDataSource.saveAppliedPatternSystem(system);
+    } catch (e) {
+      emit(state.copyWith(errorMessage: 'パターン設定の保存に失敗: $e'));
+    }
+
+    // 2. ctx／thinking は llama.cpp のみ（Strata は ctx をサーバ側が持つ）。
+    if (state.codingBackend != CodingLlmBackend.llamaCpp) return;
+    var busy = false;
+    try {
+      final settings = await _getConnectionSettings();
+      final previous = settings.localLlm;
+      if (previous.codingContextSize == profile.contextSize &&
+          previous.codingThinkingEnabled == profile.thinkingEnabled) {
+        return;
+      }
+      final llm = previous.copyWith(
+        codingContextSize: profile.contextSize,
+        codingThinkingEnabled: profile.thinkingEnabled,
+      );
+      await _saveConnectionSettings(settings.copyWith(localLlm: llm));
+      if (emit.isDone) return;
+      if (!previous.isCodingUsable) {
+        // モデル未設定／OFF のときは起動せず、設定だけ反映する。
+        emit(state.copyWith(localLlm: llm));
+        return;
+      }
+      emit(
+        state.copyWith(
+          isLlmBusy: true,
+          agentStatusMessage: 'パターン: $label（ctx ${profile.contextSize}）を適用中…',
+        ),
+      );
+      busy = true;
+      // previous を渡さないと forceRestart にならない（思考切替と同じ）。
+      final mtpDraft = await _localLlmServerLauncher.applySettings(
+        settings: llm.forServer(),
+        previous: previous.forServer(),
+        isHealthy: _localLlmClient.isReachable,
+        onStatus: (message) {
+          if (!emit.isDone) {
+            emit(state.copyWith(isLlmBusy: true, agentStatusMessage: message));
+          }
+        },
+      );
+      if (emit.isDone) return;
+      final used = _estimateUsedTokens(
+        harness: harness,
+        contextSize: llm.codingContextSize,
+      );
+      emit(
+        state.copyWith(
+          localLlm: llm,
+          isLlmBusy: false,
+          usedTokens: used,
+          warningLevel: _warningFor(
+            used,
+            harness: harness,
+            contextSize: llm.codingContextSize,
+          ),
+          agentStatusMessage: 'パターン: $label（ctx ${llm.codingContextSize}）',
+          mtpDraftFileName: mtpDraft,
+          clearMtpDraft: mtpDraft == null,
+        ),
+      );
+      busy = false;
+    } catch (e) {
+      if (!emit.isDone) {
+        emit(state.copyWith(isLlmBusy: false, errorMessage: 'パターン適用失敗: $e'));
+      }
+      busy = false;
+    } finally {
+      if (busy && !emit.isDone) {
+        emit(state.copyWith(isLlmBusy: false));
+      }
+    }
+  }
+
   Future<void> _onIndentSizeChanged(
     CodingAssistIndentSizeChanged event,
     Emitter<CodingAssistState> emit,
@@ -1137,6 +1308,15 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
         ),
       );
       await _repository.saveThread(thread);
+      // 運用パターン: ワークスペースの系統（小説＝文章）が変わったら展開し直す（14 DR-15）。
+      final patternSystem = CodingPatternProfiles.systemFor(index.kind);
+      if (patternSystem != state.appliedPatternSystem) {
+        await _applyPatternProfile(
+          emit,
+          patternSystem,
+          state.patternSelection.levelOf(patternSystem),
+        );
+      }
     } catch (e) {
       emit(state.copyWith(errorMessage: '$e', clearWorkspaceStatus: true));
     }
@@ -1903,7 +2083,7 @@ class CodingAssistBloc extends Bloc<CodingAssistEvent, CodingAssistState> {
     );
     final out = <({String path, String body})>[];
     for (final path in ordered) {
-      if (out.length >= codingReadFilesPerBatch) break;
+      if (out.length >= state.harness.readFilesPerBatch) break;
       final body = await _loadExistingFileText(path);
       if (body == null) {
         _verifyUnopenedPaths.add(path);
@@ -2158,6 +2338,11 @@ $avoid$guidance
           bumpDraftEpoch: clearDraft,
           clearAppliedPromptActions: clearDraft,
           isGenerating: true,
+          agentProgress: _progress(
+            _flutterVerifyReportTurn
+                ? CodingAgentPhase.report
+                : CodingAgentPhase.generate,
+          ),
           isEditingLastUser: false,
           streamingText: '',
           clearGenerationTrace: true,
@@ -2900,7 +3085,7 @@ $avoid$guidance
     final opened = <({String path, String body})>[];
     final skipped = <String>[];
     for (final raw in fresh) {
-      if (opened.length >= codingReadFilesPerBatch) {
+      if (opened.length >= state.harness.readFilesPerBatch) {
         skipped.add(raw);
         continue;
       }
@@ -3668,35 +3853,57 @@ $avoid$guidance
     List<CodingPromptAction> fixedPrompts = const [],
   }) async {
     var openedReads = 0;
+    var readChars = 0;
     var batchHadRead = false;
     final deferredReads = <String>[];
     final suppliedReads = <String>[];
+    final batchLimit = state.harness.readFilesPerBatch;
+    // 運用パターン X09: 1応答の読取合計を ctx 連動の予算に収める。
+    final readBudget = codingReadBudgetChars(
+      contextSize: state.contextSize,
+      charsPerToken: state.harness.charsPerToken,
+      ratio: state.harness.readBudgetRatio,
+    );
     for (final call in calls) {
       if (_cancelRequested) break;
+      var isNewRead = false;
       if (call.name == 'read_file') {
         batchHadRead = true;
         final pathArg = '${call.args['path'] ?? ''}'.trim();
         final supplied = tools.suppliedKey(pathArg);
         if (supplied != null) suppliedReads.add(supplied);
         final seen = pathArg.isNotEmpty && tools.hasReadPath(pathArg);
-        if (!seen && openedReads >= codingReadFilesPerBatch) {
-          deferredReads.add(pathArg.isEmpty ? '(path 空)' : pathArg);
+        final label = pathArg.isEmpty ? '(path 空)' : pathArg;
+        final overCount = !seen && openedReads >= batchLimit;
+        final overBudget =
+            !seen && readBudget != null && readChars >= readBudget;
+        if (overCount || overBudget) {
+          deferredReads.add(label);
           messages = [
             ...messages,
             CodingChatMessage(
               role: CodingMessageRole.tool,
-              content: codingReadBatchDeferredMessage(
-                pathArg.isEmpty ? '(path 空)' : pathArg,
-              ),
+              content: overCount
+                  ? codingReadBatchDeferredMessage(label, limit: batchLimit)
+                  : codingReadBudgetDeferredMessage(label),
               at: DateTime.now(),
               toolName: call.name,
             ),
           ];
           continue;
         }
-        if (!seen) openedReads++;
+        if (!seen) {
+          openedReads++;
+          isNewRead = true;
+        }
       }
+      final before = messages.length;
       messages = await _appendExecutedTools(emit, tools, [call], messages);
+      if (isNewRead) {
+        for (final added in messages.skip(before)) {
+          if (added.toolName == 'read_file') readChars += added.content.length;
+        }
+      }
     }
     if (batchHadRead && !_cancelRequested) {
       messages = [
@@ -3828,7 +4035,12 @@ $avoid$guidance
     ];
     if (updateIds.isEmpty && addIds.isEmpty) return;
 
-    emit(state.copyWith(agentStatusMessage: '変更案を自動適用中…'));
+    emit(
+      state.copyWith(
+        agentStatusMessage: '変更案を自動適用中…',
+        agentProgress: _progress(CodingAgentPhase.apply),
+      ),
+    );
     for (final id in updateIds) {
       if (_cancelRequested) break;
       await _applyPatchById(id, emit, auto: true);
@@ -3969,6 +4181,7 @@ $avoid$guidance
         state.copyWith(
           isGenerating: true,
           agentStatusMessage: '検証中: flutter analyze',
+          agentProgress: _progress(CodingAgentPhase.analyze),
         ),
       );
     }
@@ -4013,6 +4226,7 @@ $avoid$guidance
             state.copyWith(
               isGenerating: true,
               agentStatusMessage: '検証中: flutter test',
+              agentProgress: _progress(CodingAgentPhase.test),
             ),
           );
         }
@@ -4229,7 +4443,8 @@ $avoid$guidance
     _lastAutoCommand = null;
     await _appendAssistantNotice(
       emit,
-      '同じ実行が2回繰り返されたため、ここで止めました。自動実行は ON のままです。',
+      '同じ実行が2回繰り返されたため、ここで止めました。自動実行は ON のままです。\n\n'
+      '${codingRepeatedStopNextStepsText()}',
       status: '同じ実行の繰り返しで止めました',
       localLlm: state.localLlm,
     );
@@ -4314,6 +4529,16 @@ $avoid$guidance
       localLlm: llm,
       status: status,
     )) {
+      // Agent の報告は原因の説明が中心。次の手段はアプリが決めた文面で必ず添える。
+      final next = _verifyNextStepsText(decision, result);
+      if (next.isNotEmpty && !_cancelRequested && !emit.isDone) {
+        await _appendAssistantNotice(
+          emit,
+          next,
+          status: status,
+          localLlm: llm,
+        );
+      }
       return;
     }
     await _appendAssistantNotice(
@@ -4477,12 +4702,28 @@ $avoid$guidance
         CodingFlutterVerifyStopReason.launchFailed => 'flutter を起動できませんでした',
         CodingFlutterVerifyStopReason.timedOut => '検証がタイムアウトしました',
         CodingFlutterVerifyStopReason.packageInstall => 'パッケージ追加は人手で行ってください',
-        CodingFlutterVerifyStopReason.setsExhausted => '検証3セットで打ち切り',
+        CodingFlutterVerifyStopReason.setsExhausted =>
+          '検証${state.harness.maxVerifySets}セットで打ち切り',
         CodingFlutterVerifyStopReason.noUpdateApplied => '修正を適用できませんでした',
         _ => '検証を止めました',
       },
       _ => '完了',
     };
+  }
+
+  /// 止まったときの「次にやること」。成功・次の手段が無い理由は空（12 V5）。
+  String _verifyNextStepsText(
+    CodingFlutterVerifyDecision decision,
+    CodingFlutterVerifyResult? result,
+  ) {
+    if (decision.action == CodingFlutterVerifyAction.success) return '';
+    return codingVerifyNextStepsText(
+      reason: decision.reason,
+      autoOn: state.localLlm.codingAutoApplyPatches,
+      maxSets: state.harness.maxVerifySets,
+      log: result?.log,
+      command: result?.commandLabel,
+    );
   }
 
   String _verifyNoticeText(
@@ -4496,7 +4737,7 @@ $avoid$guidance
     final command = result?.commandLabel ?? '検証';
     final detail = switch (decision.reason) {
       CodingFlutterVerifyStopReason.setsExhausted =>
-        '自動検証の修正を3セット行いましたが、$command はまだ失敗しています。ここで止めました。自動実行は ON のままです。',
+        '自動検証の修正を${state.harness.maxVerifySets}セット行いましたが、$command はまだ失敗しています。ここで止めました。自動実行は ON のままです。',
       CodingFlutterVerifyStopReason.noUpdateApplied =>
         '自動修正でファイルを更新も作成もできなかったため、ここで止めました。自動実行は ON のままです。',
       CodingFlutterVerifyStopReason.pendingAdd =>
@@ -4519,16 +4760,18 @@ $avoid$guidance
             : '新しいパッケージの追加が必要です。pubspec.yaml への記述とインストールは人が行ってください。',
       CodingFlutterVerifyStopReason.none => '自動検証を止めました。',
     };
+    final next = _verifyNextStepsText(decision, result);
+    final head = next.isEmpty ? detail : '$detail\n\n$next';
     final log = result?.log.trim() ?? '';
     if (log.isEmpty ||
         decision.reason == CodingFlutterVerifyStopReason.pendingAdd ||
         decision.reason == CodingFlutterVerifyStopReason.notFlutter ||
         decision.reason == CodingFlutterVerifyStopReason.packageInstall) {
-      return detail;
+      return head;
     }
     final code = result?.exitCode;
     final codeLine = code == null ? '' : '\n終了コード: $code';
-    return '$detail$codeLine\n\n【ログ】\n$log';
+    return '$head$codeLine\n\n【ログ】\n$log';
   }
 
   Future<void> _onApplyPatch(
